@@ -1,5 +1,5 @@
 import { Controller, Get } from '@nestjs/common';
-import type { ApiEvent, HealthStatusDto } from '@agentic-office/shared-types';
+import type { ApiEvent, DatabaseStatusDto, HealthStatusDto } from '@agentic-office/shared-types';
 import { AppService } from './app.service';
 
 @Controller()
@@ -9,6 +9,11 @@ export class AppController {
   @Get('health')
   getHealth(): HealthStatusDto {
     return this.appService.getHealth();
+  }
+
+  @Get('database/status')
+  getDatabaseStatus(): DatabaseStatusDto {
+    return this.appService.getDatabaseStatus();
   }
 
   @Get('events/sample')

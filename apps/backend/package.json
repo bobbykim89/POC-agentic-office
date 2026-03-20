@@ -8,6 +8,9 @@
     "start": "node dist/main.js",
     "lint": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
     "clean": "rm -rf dist"
   },
   "dependencies": {
@@ -15,14 +18,21 @@
     "@nestjs/common": "^11.0.7",
     "@nestjs/core": "^11.0.7",
     "@nestjs/platform-express": "^11.0.7",
+    "@nestjs/platform-socket.io": "^11.0.7",
+    "@nestjs/websockets": "^11.0.7",
+    "drizzle-orm": "^0.44.5",
+    "pg": "^8.16.3",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.5",
     "@nestjs/schematics": "^11.0.1",
     "@nestjs/testing": "^11.0.7",
     "@types/node": "^22.19.15",
+    "@types/pg": "^8.15.5",
+    "drizzle-kit": "^0.31.4",
     "typescript": "^5.8.2"
   }
 }
