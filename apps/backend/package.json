@@ -1,0 +1,28 @@
+{
+  "name": "@agentic-office/backend",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@agentic-office/shared-types": "workspace:*",
+    "@nestjs/common": "^11.0.7",
+    "@nestjs/core": "^11.0.7",
+    "@nestjs/platform-express": "^11.0.7",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.5",
+    "@nestjs/schematics": "^11.0.1",
+    "@nestjs/testing": "^11.0.7",
+    "@types/node": "^22.19.15",
+    "typescript": "^5.8.2"
+  }
+}

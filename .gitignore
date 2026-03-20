@@ -1,0 +1,13 @@
+node_modules
+.turbo
+dist
+coverage
+.pnpm-store
+
+apps/ai-service/.venv
+apps/ai-service/__pycache__
+apps/ai-service/.pytest_cache
+apps/ai-service/*.egg-info
+
+*.log
+.DS_Store

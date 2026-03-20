@@ -1,0 +1,87 @@
+:root {
+  color-scheme: light;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(255, 204, 128, 0.4), transparent 35%),
+    linear-gradient(135deg, #f5f1e8, #d8e6f2);
+  color: #1f2a37;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+.shell {
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  min-height: 100vh;
+  padding: 2rem;
+}
+
+.hero,
+.game-panel {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(31, 42, 55, 0.08);
+  border-radius: 24px;
+  box-shadow: 0 24px 60px rgba(31, 42, 55, 0.12);
+  padding: 2rem;
+}
+
+.eyebrow {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0 0 1rem;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 4.4rem);
+  line-height: 0.96;
+  margin: 0;
+}
+
+.lede {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  max-width: 48ch;
+}
+
+.event-card {
+  background: #102033;
+  border-radius: 18px;
+  color: #f4f7fb;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.game-root {
+  aspect-ratio: 16 / 10;
+  background: linear-gradient(180deg, #21354a, #111927);
+  border-radius: 18px;
+  min-height: 320px;
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 1rem;
+  }
+
+  .hero,
+  .game-panel {
+    padding: 1.25rem;
+  }
+}
