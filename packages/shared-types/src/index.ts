@@ -11,6 +11,28 @@ export interface HealthStatusDto {
   timestamp: string;
 }
 
+export interface DatabaseStatusDto {
+  connected: boolean;
+  dialect: 'postgresql';
+  drizzle: true;
+  urlConfigured: boolean;
+}
+
 export interface PromptDto {
   prompt: string;
+}
+
+export interface ChatSendDto {
+  message: string;
+}
+
+export interface ChatMessagePayload {
+  sender: 'system' | 'user' | 'assistant';
+  message: string;
+  clientId?: string;
+}
+
+export interface RealtimeEnvelope<TPayload = Record<string, unknown>> {
+  channel: string;
+  event: ApiEvent<TPayload>;
 }
