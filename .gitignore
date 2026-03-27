@@ -5,9 +5,11 @@ coverage
 .pnpm-store
 
 apps/ai-service/.venv
-apps/ai-service/__pycache__
-apps/ai-service/.pytest_cache
+apps/ai-service/.env
 apps/ai-service/*.egg-info
+**/__pycache__/
+**/.pytest_cache/
+*.py[cod]
 
 *.log
 .DS_Store
