@@ -5,8 +5,8 @@
   "scripts": {
     "build": "python -m compileall app",
     "dev": "python -m uvicorn app.main:app --reload --port 8001",
-    "lint": "python -m py_compile app/main.py",
-    "typecheck": "python -m py_compile app/main.py",
+    "lint": "python -m compileall app",
+    "typecheck": "python -m compileall app",
     "clean": "rm -rf __pycache__ app/__pycache__"
   }
 }
