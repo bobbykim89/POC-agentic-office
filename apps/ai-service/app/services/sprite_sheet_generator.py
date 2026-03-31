@@ -30,9 +30,10 @@ DEFAULT_IMAGE_QUALITY = "medium"
 DEFAULT_IMAGE_STYLE = "natural"
 DEFAULT_IMAGE_SIZE = "1536x1024"
 DEFAULT_OUTPUT_DIR = "generated/sprites"
+DEFAULT_FINAL_SPRITE_HEIGHT = 256
 MAX_GENERATION_RETRIES = 3
 TRANSPARENCY_ALPHA_THRESHOLD = 12
-VERTICAL_CROP_PADDING_PIXELS = 24
+VERTICAL_CROP_PADDING_PIXELS = 4
 GREEN_SCREEN = (0, 255, 0)
 SPRITE_PROMPT_TEMPLATE = """
 Create a pixel art sprite sheet of a single character.
@@ -74,7 +75,8 @@ Sprite requirements:
 * The face is the highest-priority detail in the design
 * Use a slightly oversized head so the face has room for readable detail
 * Eyes should be large enough to read clearly in pixel art
-* The eyes should include a small visible white area when possible, not just solid black dots
+* The eyes should include a clearly visible white area or sclera, not just solid black dots
+* Keep the eye whites visible even when the character is not wearing glasses
 * Use enough pixel density that the face does not collapse into only a few large blocks
 * Use a super-chibi face design and omit the nose unless it is absolutely necessary
 * Focus the facial design primarily on the eyes and mouth
@@ -85,10 +87,11 @@ Sprite requirements:
 * The face must be intentionally designed, not abstract or melted-looking
 * Use clear pixel-art facial features: readable eyes and a distinct smiling mouth
 * The character must be visibly smiling, not neutral, blank, or expressionless
+* The smile should be big, cheerful, and easy to read at a glance
 * The smile must be clean, balanced, and intentionally designed
 * Do not make the mouth lopsided, crooked, blurry, or uneven
-* The front-view mouth should use crisp pixel clusters and a symmetrical smiling shape
-* Front view must show the clearest facial detail and an obvious cheerful smile
+* The front-view mouth should use crisp pixel clusters and a symmetrical big smiling shape
+* Front view must show the clearest facial detail and an obvious big cheerful smile
 * Side view should still suggest a smile in profile if the mouth is visible
 * Avoid blank, flat, distorted, asymmetrical, or blob-like faces
 * Preserve key appearance details from the description, especially glasses, hairstyle, clothing, and handheld objects
@@ -98,6 +101,10 @@ Sprite requirements:
 * Preserve nuanced visible skin tone and undertone details such as fair, light olive, olive, tan, warm beige, medium brown, or deep brown when described
 * Do not collapse skin tone into an overly broad category if the description is more specific
 * Keep the same skin tone consistently across the front, back, and side sprites
+* Treat brown skin tones with extra care and specificity so they do not drift lighter, darker, grayer, or redder than described
+* Preserve both depth and undertone when brown skin is described, for example warm brown, golden brown, medium brown, rich brown, or deep brown
+* Avoid generic substitutions like simply "tan" or "dark" if the description gives a more precise brown skin tone
+* If the description includes a nuanced skin tone, preserve that exact wording rather than simplifying it
 
 Poses (exactly 3):
 
@@ -197,6 +204,7 @@ class SpriteSheetResult:
     absolute_image_path: str
     image_width: int
     image_height: int
+    final_sprite_height: int
     generation_attempts: int
     generation_model: str
     validation: SpriteValidationResult
@@ -268,11 +276,12 @@ def generate_character_sprite_sheet(
             # We keep the full horizontal canvas and only trim vertical dead
             # space so the outer sprites do not get clipped.
             cropped_sprite_bytes = _crop_outer_empty_space(sprite_bytes)
-            image_width, image_height = _get_image_dimensions(cropped_sprite_bytes)
+            final_sprite_bytes = _maybe_rescale_sprite_sheet(cropped_sprite_bytes)
+            image_width, image_height = _get_image_dimensions(final_sprite_bytes)
             saved_path = _save_sprite_sheet(
                 output_dir=output_dir,
                 character_description=character_description,
-                image_bytes=cropped_sprite_bytes,
+                image_bytes=final_sprite_bytes,
             )
             storage_record = _build_storage_record(saved_path)
             return SpriteSheetResult(
@@ -283,6 +292,7 @@ def generate_character_sprite_sheet(
                 absolute_image_path=str(saved_path),
                 image_width=image_width,
                 image_height=image_height,
+                final_sprite_height=_final_sprite_height(),
                 generation_attempts=attempt,
                 generation_model=_image_model(),
                 validation=SpriteValidationResult(
@@ -347,8 +357,10 @@ def _extract_character_description(
                             "Describe the visible person for a retro game sprite artist. "
                             "Focus on visible hairstyle, approximate visible skin tone, clothing, accessories, glasses, facial expression, "
                             "build if visually obvious, and any object held including left or right hand if clear. "
-                            "Use nuanced visible skin tone wording when visually clear, such as fair, light neutral, light olive, olive, tan, warm beige, medium brown, or deep brown skin tone. "
+                            "Use the most specific visible skin tone wording you can justify, such as fair, light neutral, light olive, olive, tan, warm beige, warm brown, golden brown, medium brown, rich brown, or deep brown skin tone. "
                             "Preserve undertone cues when possible and do not exaggerate or stylize the skin tone. "
+                            "Be especially careful with brown skin tones so they are not flattened into overly generic labels. "
+                            "If a nuanced brown skin tone is visible, keep that nuance in the wording instead of simplifying it. "
                             "If the expression is ambiguous, default to describing the person as having a friendly smile. "
                             "Do not infer ethnicity, identity, or other sensitive traits. "
                             "Return one concise paragraph only."
@@ -517,7 +529,7 @@ def _attempt_background_removal(image_bytes: bytes) -> bytes:
 
 
 def _crop_outer_empty_space(image_bytes: bytes) -> bytes:
-    """Trim vertical dead space while preserving the full sprite-sheet width."""
+    """Trim vertical dead space aggressively while preserving full width."""
 
     image = Image.open(BytesIO(image_bytes)).convert("RGBA")
     alpha_channel = image.getchannel("A")
@@ -532,7 +544,9 @@ def _crop_outer_empty_space(image_bytes: bytes) -> bytes:
     upper = max(0, upper - VERTICAL_CROP_PADDING_PIXELS)
     lower = min(image.height, lower + VERTICAL_CROP_PADDING_PIXELS)
 
-    # Keep the original horizontal canvas to avoid clipping the outer sprites.
+    # Keep the original horizontal canvas to avoid clipping the outer sprites,
+    # but tighten the vertical bounds so the final resize normalizes character
+    # height more consistently.
     cropped_image = image.crop((0, upper, image.width, lower))
     output = BytesIO()
     cropped_image.save(output, format="PNG")
@@ -544,6 +558,29 @@ def _get_image_dimensions(image_bytes: bytes) -> tuple[int, int]:
 
     image = Image.open(BytesIO(image_bytes))
     return image.size
+
+
+def _maybe_rescale_sprite_sheet(image_bytes: bytes) -> bytes:
+    """Resize the final sprite sheet to a fixed height while preserving ratio."""
+
+    target_height = _final_sprite_height()
+    if target_height <= 0:
+        return image_bytes
+
+    image = Image.open(BytesIO(image_bytes)).convert("RGBA")
+    width, height = image.size
+    if height == target_height:
+        return image_bytes
+
+    target_width = max(1, round(width * (target_height / height)))
+    resized_image = image.resize(
+        (target_width, target_height),
+        resample=Image.Resampling.NEAREST,
+    )
+
+    output = BytesIO()
+    resized_image.save(output, format="PNG")
+    return output.getvalue()
 
 
 def _has_transparent_background(image_bytes: bytes) -> bool:
@@ -695,13 +732,25 @@ def _sanitize_character_description(text: str) -> str:
     sanitized = _normalize_text(sanitized)
 
     if not re.search(
-        r"\b(fair|light(?: neutral| olive)?|olive|tan|warm beige|medium brown|deep brown|dark)\s+skin tone\b",
+        r"\b(fair|light(?: neutral| olive)?|olive|tan|warm beige|warm brown|golden brown|medium brown|rich brown|deep brown|dark)\s+skin tone\b",
         sanitized,
         flags=re.IGNORECASE,
     ):
         sanitized = re.sub(
-            r"\b(fair|light(?: neutral| olive)?|olive|tan|warm beige|medium brown|deep brown|dark)\s+skin\b",
+            r"\b(fair|light(?: neutral| olive)?|olive|tan|warm beige|warm brown|golden brown|medium brown|rich brown|deep brown|dark)\s+skin\b",
             lambda match: f"{match.group(1).lower()} skin tone",
+            sanitized,
+            flags=re.IGNORECASE,
+        )
+
+    if re.search(r"\bmedium skin tone\b", sanitized, flags=re.IGNORECASE) and not re.search(
+        r"\b(warm brown|golden brown|medium brown|rich brown)\s+skin tone\b",
+        sanitized,
+        flags=re.IGNORECASE,
+    ):
+        sanitized = re.sub(
+            r"\bmedium skin tone\b",
+            "medium brown skin tone",
             sanitized,
             flags=re.IGNORECASE,
         )
@@ -752,6 +801,19 @@ def _image_style() -> str:
 
 def _image_size() -> str:
     return os.getenv("OPENAI_IMAGE_SIZE", DEFAULT_IMAGE_SIZE)
+
+
+def _final_sprite_height() -> int:
+    raw_value = os.getenv("FINAL_SPRITE_HEIGHT")
+    if raw_value is None:
+        return DEFAULT_FINAL_SPRITE_HEIGHT
+
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return DEFAULT_FINAL_SPRITE_HEIGHT
+
+    return max(1, parsed)
 
 
 def _resolve_output_dir() -> Path:

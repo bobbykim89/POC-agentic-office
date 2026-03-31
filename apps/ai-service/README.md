@@ -47,7 +47,10 @@ OPENAI_IMAGE_QUALITY=medium
 OPENAI_IMAGE_SIZE=1536x1024
 OPENAI_IMAGE_STYLE=natural
 SPRITE_OUTPUT_DIR=generated/sprites
+FINAL_SPRITE_HEIGHT=256
 ```
+
+`FINAL_SPRITE_HEIGHT` defaults to `256`. The pipeline rescales the final PNG to that height while preserving aspect ratio.
 
 ## Run locally
 
