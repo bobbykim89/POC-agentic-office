@@ -51,6 +51,7 @@ class SpriteSheetResponse(BaseModel):
     absolute_image_path: str
     image_width: int
     image_height: int
+    final_sprite_height: int
     generation_attempts: int
     generation_model: str
     validation: dict[str, Any]
@@ -133,6 +134,7 @@ async def create_sprite_sheet(
         absolute_image_path=result.absolute_image_path,
         image_width=result.image_width,
         image_height=result.image_height,
+        final_sprite_height=result.final_sprite_height,
         generation_attempts=result.generation_attempts,
         generation_model=result.generation_model,
         validation=validation_to_dict(result.validation),
