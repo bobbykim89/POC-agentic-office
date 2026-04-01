@@ -7,6 +7,8 @@ coverage
 apps/ai-service/.venv
 apps/ai-service/.env
 apps/ai-service/*.egg-info
+apps/ai-service/generated/*
+!apps/ai-service/generated/.gitkeep
 **/__pycache__/
 **/.pytest_cache/
 *.py[cod]
