@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.services import (
     generate_character_sprite_sheet,
     generate_linkedin_post_with_openai,
+    get_random_ai_news_summary,
     validation_to_dict,
 )
 
@@ -56,6 +57,15 @@ class SpriteSheetResponse(BaseModel):
     generation_model: str
     validation: dict[str, Any]
     storage_record: dict[str, Any]
+
+
+class AINewsResponse(BaseModel):
+    title: str
+    source: str
+    published_at: str
+    article_url: str
+    paragraph: str
+    model: str
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -139,4 +149,25 @@ async def create_sprite_sheet(
         generation_model=result.generation_model,
         validation=validation_to_dict(result.validation),
         storage_record=result.storage_record,
+    )
+
+
+@app.get("/agents/ai-news", response_model=AINewsResponse)
+def get_ai_news() -> AINewsResponse:
+    """Fetch a recent AI news item and summarize it into a short paragraph."""
+
+    try:
+        result = get_random_ai_news_summary()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"AI news pipeline failed: {exc}") from exc
+
+    return AINewsResponse(
+        title=result.title,
+        source=result.source,
+        published_at=result.published_at,
+        article_url=result.article_url,
+        paragraph=result.paragraph,
+        model=result.model,
     )
