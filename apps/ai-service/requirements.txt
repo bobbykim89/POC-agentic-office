@@ -5,3 +5,4 @@ python-dotenv==1.0.1
 openai
 python-multipart==0.0.20
 pillow==11.2.1
+cloudinary==1.44.1
