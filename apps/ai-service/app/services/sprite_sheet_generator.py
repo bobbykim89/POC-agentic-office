@@ -19,6 +19,8 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+import cloudinary
+import cloudinary.uploader
 from dotenv import load_dotenv
 from openai import OpenAI
 from PIL import Image
@@ -354,16 +356,19 @@ def _extract_character_description(
                     {
                         "type": "input_text",
                         "text": (
-                            "Describe the visible person for a retro game sprite artist. "
-                            "Focus on visible hairstyle, approximate visible skin tone, clothing, accessories, glasses, facial expression, "
-                            "build if visually obvious, and any object held including left or right hand if clear. "
-                            "Use the most specific visible skin tone wording you can justify, such as fair, light neutral, light olive, olive, tan, warm beige, warm brown, golden brown, medium brown, rich brown, or deep brown skin tone. "
+                            "Inspect the visible person and return JSON only with these keys: "
+                            "summary, visible_skin_tone_label, visible_skin_tone_hex, visible_skin_tone_notes. "
+                            "The summary must be one concise paragraph for a retro game sprite artist and should describe visible hairstyle, "
+                            "clothing, accessories, glasses, facial expression, build if visually obvious, and any object held including "
+                            "left or right hand if clear. "
+                            "For visible_skin_tone_label, use the most specific visible wording you can justify, such as fair, light neutral, "
+                            "light olive, olive, tan, warm beige, warm brown, golden brown, medium brown, rich brown, or deep brown skin tone. "
+                            "For visible_skin_tone_hex, provide an approximate representative hex color like #A67C52 based only on the visible skin in the image. "
+                            "For visible_skin_tone_notes, briefly mention undertone and confidence, for example warm golden undertone, medium confidence. "
                             "Preserve undertone cues when possible and do not exaggerate or stylize the skin tone. "
                             "Be especially careful with brown skin tones so they are not flattened into overly generic labels. "
-                            "If a nuanced brown skin tone is visible, keep that nuance in the wording instead of simplifying it. "
-                            "If the expression is ambiguous, default to describing the person as having a friendly smile. "
                             "Do not infer ethnicity, identity, or other sensitive traits. "
-                            "Return one concise paragraph only."
+                            "If the expression is ambiguous, describe the person as having a friendly smile."
                         ),
                     },
                     {
@@ -375,7 +380,8 @@ def _extract_character_description(
         ],
     )
 
-    description = _normalize_text(response.output_text)
+    parsed = _parse_json_object(response.output_text)
+    description = _build_character_description_from_extraction(parsed)
     if not description:
         raise RuntimeError("Failed to extract a character description from the uploaded image.")
     return description
@@ -663,15 +669,88 @@ def _save_sprite_sheet(*, output_dir: Path, character_description: str, image_by
 
 
 def _build_storage_record(saved_path: Path) -> dict[str, Any]:
-    """Return placeholder metadata for a future database-backed asset store."""
+    """Return local storage metadata, optionally augmented with Cloudinary."""
 
-    return {
+    local_record: dict[str, Any] = {
         "storage_backend": "local",
         "relative_path": str(saved_path.relative_to(_project_root())),
         "absolute_path": str(saved_path),
         "db_persisted": False,
         "db_record_id": None,
-        "todo": "Persist this metadata in the future database layer.",
+    }
+
+    if not _cloudinary_is_configured():
+        local_record["cloudinary_enabled"] = False
+        return local_record
+
+    cloudinary_record = _upload_to_cloudinary(saved_path=saved_path)
+    return {
+        **local_record,
+        "storage_backend": "local+cloudinary",
+        "cloudinary_enabled": True,
+        "cloudinary": cloudinary_record,
+    }
+
+
+def _cloudinary_is_configured() -> bool:
+    """Return whether all required Cloudinary credentials are present."""
+
+    return all(
+        os.getenv(variable_name)
+        for variable_name in (
+            "CLOUDINARY_CLOUD_NAME",
+            "CLOUDINARY_API_KEY",
+            "CLOUDINARY_API_SECRET",
+        )
+    )
+
+
+def _upload_to_cloudinary(*, saved_path: Path) -> dict[str, Any]:
+    """Upload a generated sprite PNG to Cloudinary and return asset metadata."""
+
+    cloud_name = os.getenv("CLOUDINARY_CLOUD_NAME")
+    api_key = os.getenv("CLOUDINARY_API_KEY")
+    api_secret = os.getenv("CLOUDINARY_API_SECRET")
+
+    if not cloud_name or not api_key or not api_secret:
+        raise RuntimeError(
+            "Cloudinary upload was requested but CLOUDINARY_CLOUD_NAME, "
+            "CLOUDINARY_API_KEY, or CLOUDINARY_API_SECRET is missing."
+        )
+
+    cloudinary.config(
+        cloud_name=cloud_name,
+        api_key=api_key,
+        api_secret=api_secret,
+        secure=True,
+    )
+
+    encoded_image = base64.b64encode(saved_path.read_bytes()).decode("utf-8")
+    folder = os.getenv("CLOUDINARY_SPRITE_FOLDER", "agentic-office/sprites")
+    public_id = saved_path.stem
+
+    try:
+        upload_result = cloudinary.uploader.upload(
+            f"data:image/png;base64,{encoded_image}",
+            folder=folder,
+            public_id=public_id,
+            overwrite=True,
+            resource_type="image",
+        )
+    except Exception as exc:
+        raise RuntimeError(f"Cloudinary upload failed: {exc}") from exc
+
+    return {
+        "asset_id": upload_result.get("asset_id"),
+        "public_id": upload_result.get("public_id"),
+        "version": upload_result.get("version"),
+        "width": upload_result.get("width"),
+        "height": upload_result.get("height"),
+        "format": upload_result.get("format"),
+        "resource_type": upload_result.get("resource_type"),
+        "folder": folder,
+        "secure_url": upload_result.get("secure_url"),
+        "url": upload_result.get("url"),
     }
 
 
@@ -709,6 +788,32 @@ def _normalize_text(text: str) -> str:
     """Collapse repeated whitespace so prompt text stays compact and stable."""
 
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _build_character_description_from_extraction(parsed: dict[str, Any]) -> str:
+    """Compose a prompt-ready description from structured vision extraction."""
+
+    summary = _normalize_text(str(parsed.get("summary", "")))
+    tone_label = _normalize_text(str(parsed.get("visible_skin_tone_label", "")))
+    tone_hex = _normalize_text(str(parsed.get("visible_skin_tone_hex", ""))).upper()
+    tone_notes = _normalize_text(str(parsed.get("visible_skin_tone_notes", "")))
+
+    if tone_hex and not re.fullmatch(r"#[0-9A-F]{6}", tone_hex):
+        tone_hex = ""
+
+    tone_sentence = ""
+    if tone_label and tone_hex and tone_notes:
+        tone_sentence = (
+            f" Visible skin tone reference: {tone_label} ({tone_hex}); {tone_notes}."
+        )
+    elif tone_label and tone_hex:
+        tone_sentence = f" Visible skin tone reference: {tone_label} ({tone_hex})."
+    elif tone_label and tone_notes:
+        tone_sentence = f" Visible skin tone reference: {tone_label}; {tone_notes}."
+    elif tone_label:
+        tone_sentence = f" Visible skin tone reference: {tone_label}."
+
+    return _normalize_text(f"{summary}{tone_sentence}")
 
 
 def _sanitize_character_description(text: str) -> str:
