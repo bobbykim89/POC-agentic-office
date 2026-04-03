@@ -7,6 +7,7 @@ Current app structure:
 - `app/main.py`: FastAPI routes and request/response models
 - `app/services/linkedin_writer.py`: OpenAI-backed LinkedIn post generator
 - `app/services/sprite_sheet_generator.py`: character sprite-sheet pipeline with validation and retries
+- `app/services/weekly_report_agent.py`: Outlook/Microsoft Graph-backed 515 drafting, revision, draft-save, and send flow
 
 There is no local `app/agents` implementation in the current version.
 
@@ -18,14 +19,14 @@ There is no local `app/agents` implementation in the current version.
 - `POST /agents/sprite-sheet`: accepts either a description or an uploaded image, generates a sprite sheet, validates it, retries up to 3 times, and saves the final PNG locally
 - If Cloudinary credentials are configured, generated sprite sheets are also uploaded to Cloudinary and the response includes hosted asset metadata
 - `GET /agents/ai-news`: fetches a recent AI-related news item, picks one at random, and summarizes it in plain language
-- `GET /agents/weekly-report/google/auth/start`: starts Google OAuth so a user can connect Gmail
-- `GET /agents/weekly-report/google/auth/callback`: stores the Gmail OAuth tokens after consent
-- `GET /agents/weekly-report/google/accounts`: lists connected Gmail accounts
+- `GET /agents/weekly-report/microsoft/auth/start`: starts Microsoft OAuth so a user can connect Outlook/Microsoft 365 mail
+- `GET /agents/weekly-report/microsoft/auth/callback`: stores the Microsoft OAuth tokens after consent
+- `GET /agents/weekly-report/microsoft/accounts`: lists connected Outlook accounts
 - `GET /agents/weekly-report/history`: fetches recent sent 515-style emails
 - `POST /agents/weekly-report/draft`: drafts a 515 email from a rough weekly summary and prior examples
 - `POST /agents/weekly-report/revise`: revises a draft based on user feedback
-- `POST /agents/weekly-report/save-draft`: saves the current 515 draft to Gmail Drafts without sending it
-- `POST /agents/weekly-report/send`: sends the approved 515 email through Gmail
+- `POST /agents/weekly-report/save-draft`: saves the current 515 draft to Outlook Drafts without sending it
+- `POST /agents/weekly-report/send`: sends the approved 515 email through Microsoft Graph
 
 Example request:
 
@@ -67,16 +68,33 @@ CLOUDINARY_API_KEY=your_api_key_here
 CLOUDINARY_API_SECRET=your_api_secret_here
 CLOUDINARY_SPRITE_FOLDER=agentic-office/sprites
 OPENAI_515_MODEL=gpt-5-mini
-GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
-GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret
-GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8001/agents/weekly-report/google/auth/callback
-WEEKLY_REPORT_GMAIL_QUERY=in:sent subject:(515 report) newer_than:30d
+MICROSOFT_CLIENT_ID=your_microsoft_app_client_id
+MICROSOFT_CLIENT_SECRET=your_microsoft_app_client_secret
+MICROSOFT_TENANT_ID=organizations
+MICROSOFT_REDIRECT_URI=http://localhost:8001/agents/weekly-report/microsoft/auth/callback
+WEEKLY_REPORT_SUBJECT_QUERY=515 report
+WEEKLY_REPORT_LOOKBACK_DAYS=30
+WEEKLY_REPORT_TIMEZONE=America/Phoenix
 WEEKLY_REPORT_DEFAULT_TO=
 ```
 
 `FINAL_SPRITE_HEIGHT` defaults to `256`. The pipeline rescales the final PNG to that height while preserving aspect ratio.
 If the `CLOUDINARY_*` vars are set, the sprite response includes `storage_record.cloudinary.secure_url`.
-The weekly report agent stores connected Gmail account tokens locally under `apps/ai-service/generated/weekly_reports` in this first version.
+The weekly report agent stores connected Microsoft account tokens locally under `apps/ai-service/generated/weekly_reports` in this first version.
+
+Microsoft/Outlook env var notes:
+
+- `MICROSOFT_CLIENT_ID`: the Application (client) ID from your Microsoft Entra app registration
+- `MICROSOFT_CLIENT_SECRET`: the client secret value from `Certificates & secrets`
+- `MICROSOFT_TENANT_ID`: the Directory (tenant) ID for a single-tenant app, or `organizations` for a broader org-based login
+- `MICROSOFT_REDIRECT_URI`: the web redirect URI configured on the Entra app, for example `http://localhost:8001/agents/weekly-report/microsoft/auth/callback`
+
+Weekly report env var notes:
+
+- `WEEKLY_REPORT_SUBJECT_QUERY`: simple subject-term matching for prior 515 emails
+- `WEEKLY_REPORT_LOOKBACK_DAYS`: how far back to search Sent Items
+- `WEEKLY_REPORT_TIMEZONE`: timezone used when rolling the subject line to today's date
+- `WEEKLY_REPORT_DEFAULT_TO`: fallback recipient if prior examples do not contain one
 
 ## Run locally
 
@@ -119,46 +137,47 @@ Run on the main project folder.
 
 The generated sprite sheet is saved locally under `apps/ai-service/generated/sprites` by default. When Cloudinary is configured, the same response also includes hosted asset metadata and a URL you can use directly in the frontend.
 
-## Test the weekly report Gmail flow
+## Test the weekly report Outlook flow
 
-1. Create a Google OAuth web app and add `http://localhost:8001/agents/weekly-report/google/auth/callback` as an authorized redirect URI.
-2. Put `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, and `OPENAI_API_KEY` in `apps/ai-service/.env`.
-3. Start the service:
+1. Create a Microsoft Entra app registration and add `http://localhost:8001/agents/weekly-report/microsoft/auth/callback` as a redirect URI.
+2. Grant delegated Microsoft Graph permissions for `Mail.Read`, `Mail.ReadWrite`, `Mail.Send`, `User.Read`, and `offline_access`.
+3. Put `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI`, and `OPENAI_API_KEY` in `apps/ai-service/.env`.
+4. Start the service:
 
 ```bash
 uvicorn app.main:app --reload --port 8001
 ```
 
-4. Start auth and open the returned `authorization_url` in a browser:
+5. Start auth and open the returned `authorization_url` in a browser:
 
 ```bash
-curl http://localhost:8001/agents/weekly-report/google/auth/start
+curl http://localhost:8001/agents/weekly-report/microsoft/auth/start
 ```
 
-5. After consent, the callback stores the Gmail account locally. You can verify connected accounts:
+6. After consent, the callback stores the Outlook account locally. You can verify connected accounts:
 
 ```bash
-curl http://localhost:8001/agents/weekly-report/google/accounts
+curl http://localhost:8001/agents/weekly-report/microsoft/accounts
 ```
 
-6. Fetch recent 515 examples:
+7. Fetch recent 515 examples:
 
 ```bash
 curl "http://localhost:8001/agents/weekly-report/history?account_email=your.asu@asu.edu"
 ```
 
-7. Draft a new 515 from a rough summary:
+8. Draft a new 515 from a rough summary:
 
 ```bash
 curl -X POST http://localhost:8001/agents/weekly-report/draft \
   -H "Content-Type: application/json" \
   -d '{
     "account_email":"your.asu@asu.edu",
-    "weekly_summary":"I wrapped up the sprite generator fixes, tested Cloudinary uploads, and started shaping the 515 workflow. Next week I want to keep moving on the Gmail integration and clean up a few rough edges."
+    "weekly_summary":"I wrapped up the sprite generator fixes, tested Cloudinary uploads, and started shaping the 515 workflow. Next week I want to keep moving on the Outlook integration and clean up a few rough edges."
   }'
 ```
 
-8. Revise the draft if needed:
+9. Revise the draft if needed:
 
 ```bash
 curl -X POST http://localhost:8001/agents/weekly-report/revise \
@@ -171,7 +190,7 @@ curl -X POST http://localhost:8001/agents/weekly-report/revise \
   }'
 ```
 
-9. Save to Gmail Drafts if you do not want to send yet:
+10. Save to Outlook Drafts if you do not want to send yet:
 
 ```bash
 curl -X POST http://localhost:8001/agents/weekly-report/save-draft \
@@ -180,11 +199,11 @@ curl -X POST http://localhost:8001/agents/weekly-report/save-draft \
     "account_email":"your.asu@asu.edu",
     "recipient":"manager@asu.edu",
     "subject":"515 Report",
-    "body":"Final draft you want to keep in Gmail drafts"
+    "body":"Final draft you want to keep in Outlook drafts"
   }'
 ```
 
-10. Send only after approval:
+11. Send only after approval:
 
 ```bash
 curl -X POST http://localhost:8001/agents/weekly-report/send \
@@ -197,3 +216,65 @@ curl -X POST http://localhost:8001/agents/weekly-report/send \
     "confirm_send":true
   }'
 ```
+
+## Weekly Report Workflow
+
+The intended backend workflow for the 515 generator is:
+
+1. Connect Outlook through Microsoft OAuth
+2. Fetch recent sent 515 emails from Sent Items
+3. Draft a new 515 from a rough weekly summary
+4. Optionally revise the draft one or more times
+5. Save the final version to Outlook Drafts
+6. Send only when the user explicitly confirms
+
+The weekly report APIs return both:
+
+- `body`: plain text for quick reading and editing
+- `body_html`: rich HTML for Outlook-friendly formatting
+
+That means the draft-save and send endpoints can preserve section headers, bullets, and spacing instead of flattening the email into plain text.
+
+### Practical local testing loop
+
+If you save a draft response into a local file such as `apps/ai-service/test-assets/test.json`, you can reuse it during manual testing:
+
+Save the current response as an Outlook draft:
+
+```bash
+curl -X POST http://localhost:8001/agents/weekly-report/save-draft \
+  -H "Content-Type: application/json" \
+  --data-binary "$(jq '{account_email, recipient, subject, body, body_html}' apps/ai-service/test-assets/test.json)"
+```
+
+Revise an existing local draft file and overwrite it with the new response:
+
+```bash
+jq --slurpfile draft apps/ai-service/test-assets/test.json -n \
+  --arg instructions "Make this a little more concise while keeping the same structure and tone." \
+  '{
+    account_email: $draft[0].account_email,
+    current_subject: $draft[0].subject,
+    current_body: $draft[0].body,
+    current_body_html: $draft[0].body_html,
+    revision_instructions: $instructions,
+    recipient: $draft[0].recipient
+  }' \
+| curl -X POST http://localhost:8001/agents/weekly-report/revise \
+    -H "Content-Type: application/json" \
+    --data-binary @- \
+| tee apps/ai-service/test-assets/test.json
+```
+
+Send the current local draft file:
+
+```bash
+curl -X POST http://localhost:8001/agents/weekly-report/send \
+  -H "Content-Type: application/json" \
+  --data-binary "$(jq '{account_email, recipient, subject, body, body_html, confirm_send: true}' apps/ai-service/test-assets/test.json)"
+```
+
+Notes:
+
+- The current send endpoint sends the content you provide in the request body. It does not send a previously saved Outlook draft by `graph_message_id`.
+- Saving a revised version creates a new Outlook draft. It does not currently update an existing draft in place.

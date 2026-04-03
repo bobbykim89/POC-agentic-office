@@ -7,16 +7,16 @@ from pydantic import BaseModel, Field
 from app.services import (
     WeeklyReportMessage,
     draft_weekly_report,
-    finish_google_gmail_auth,
+    finish_microsoft_auth,
     generate_character_sprite_sheet,
     generate_linkedin_post_with_openai,
     get_random_ai_news_summary,
     get_weekly_report_history,
-    list_connected_google_accounts,
+    list_connected_microsoft_accounts,
     revise_weekly_report,
     save_weekly_report_draft,
     send_weekly_report,
-    start_google_gmail_auth,
+    start_microsoft_auth,
     validation_to_dict,
 )
 
@@ -86,20 +86,21 @@ class WeeklyReportMessageResponse(BaseModel):
     cc: list[str]
     snippet: str
     body_text: str
+    body_html: str
 
 
-class GoogleAuthStartResponse(BaseModel):
+class MicrosoftAuthStartResponse(BaseModel):
     authorization_url: str
     state: str
 
 
-class GoogleAuthFinishResponse(BaseModel):
+class MicrosoftAuthFinishResponse(BaseModel):
     account_email: str
     connected_at: str
     scopes: list[str]
 
 
-class ConnectedGoogleAccountResponse(BaseModel):
+class ConnectedMicrosoftAccountResponse(BaseModel):
     account_email: str
     connected_at: str | None
     scopes: list[str]
@@ -125,6 +126,7 @@ class WeeklyReportReviseRequest(BaseModel):
     account_email: str
     current_subject: str = Field(min_length=1, max_length=300)
     current_body: str = Field(min_length=1, max_length=12000)
+    current_body_html: str | None = None
     revision_instructions: str = Field(min_length=1, max_length=3000)
     recipient: str | None = None
 
@@ -134,6 +136,7 @@ class WeeklyReportDraftResponse(BaseModel):
     recipient: str
     subject: str
     body: str
+    body_html: str
     model: str
     source_examples: list[WeeklyReportMessageResponse]
     last_week_email: WeeklyReportMessageResponse | None
@@ -144,6 +147,7 @@ class WeeklyReportSendRequest(BaseModel):
     recipient: str = Field(min_length=1, max_length=320)
     subject: str = Field(min_length=1, max_length=300)
     body: str = Field(min_length=1, max_length=12000)
+    body_html: str | None = None
     confirm_send: bool = Field(
         default=False,
         description="Must be true or the API will refuse to send the message.",
@@ -154,8 +158,8 @@ class WeeklyReportSendResponse(BaseModel):
     account_email: str
     recipient: str
     subject: str
-    gmail_message_id: str
-    gmail_thread_id: str | None
+    graph_message_id: str | None
+    graph_conversation_id: str | None
 
 
 class WeeklyReportSaveDraftRequest(BaseModel):
@@ -163,14 +167,15 @@ class WeeklyReportSaveDraftRequest(BaseModel):
     recipient: str = Field(min_length=1, max_length=320)
     subject: str = Field(min_length=1, max_length=300)
     body: str = Field(min_length=1, max_length=12000)
+    body_html: str | None = None
 
 
 class WeeklyReportSaveDraftResponse(BaseModel):
     account_email: str
     recipient: str
     subject: str
-    gmail_draft_id: str
-    gmail_message_id: str | None
+    graph_message_id: str
+    graph_conversation_id: str | None
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -192,6 +197,7 @@ def _weekly_report_message_to_response(message: WeeklyReportMessage) -> WeeklyRe
         cc=message.cc,
         snippet=message.snippet,
         body_text=message.body_text,
+        body_html=message.body_html,
     )
 
 
@@ -292,43 +298,43 @@ def get_ai_news() -> AINewsResponse:
 
 
 @app.get(
-    "/agents/weekly-report/google/auth/start",
-    response_model=GoogleAuthStartResponse,
+    "/agents/weekly-report/microsoft/auth/start",
+    response_model=MicrosoftAuthStartResponse,
 )
-def start_weekly_report_google_auth() -> GoogleAuthStartResponse:
-    """Start the Google OAuth flow for Gmail access."""
+def start_weekly_report_microsoft_auth() -> MicrosoftAuthStartResponse:
+    """Start the Microsoft OAuth flow for Outlook access."""
 
     try:
-        result = start_google_gmail_auth()
+        result = start_microsoft_auth()
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Google auth start failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Microsoft auth start failed: {exc}") from exc
 
-    return GoogleAuthStartResponse(
+    return MicrosoftAuthStartResponse(
         authorization_url=result["authorization_url"],
         state=result["state"],
     )
 
 
 @app.get(
-    "/agents/weekly-report/google/auth/callback",
-    response_model=GoogleAuthFinishResponse,
+    "/agents/weekly-report/microsoft/auth/callback",
+    response_model=MicrosoftAuthFinishResponse,
 )
-def finish_weekly_report_google_auth(
+def finish_weekly_report_microsoft_auth(
     state: str,
     code: str,
-) -> GoogleAuthFinishResponse:
-    """Finish the Google OAuth flow and persist credentials."""
+) -> MicrosoftAuthFinishResponse:
+    """Finish the Microsoft OAuth flow and persist credentials."""
 
     try:
-        result = finish_google_gmail_auth(state=state, code=code)
+        result = finish_microsoft_auth(state=state, code=code)
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Google auth callback failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Microsoft auth callback failed: {exc}") from exc
 
-    return GoogleAuthFinishResponse(
+    return MicrosoftAuthFinishResponse(
         account_email=result["account_email"],
         connected_at=result["connected_at"],
         scopes=result["scopes"],
@@ -336,21 +342,21 @@ def finish_weekly_report_google_auth(
 
 
 @app.get(
-    "/agents/weekly-report/google/accounts",
-    response_model=list[ConnectedGoogleAccountResponse],
+    "/agents/weekly-report/microsoft/accounts",
+    response_model=list[ConnectedMicrosoftAccountResponse],
 )
-def get_connected_weekly_report_accounts() -> list[ConnectedGoogleAccountResponse]:
-    """List Gmail accounts connected for the weekly report workflow."""
+def get_connected_weekly_report_accounts() -> list[ConnectedMicrosoftAccountResponse]:
+    """List Outlook accounts connected for the weekly report workflow."""
 
     try:
-        accounts = list_connected_google_accounts()
+        accounts = list_connected_microsoft_accounts()
     except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Listing Google accounts failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Listing Microsoft accounts failed: {exc}") from exc
 
     return [
-        ConnectedGoogleAccountResponse(
+        ConnectedMicrosoftAccountResponse(
             account_email=account["account_email"],
             connected_at=account.get("connected_at"),
             scopes=list(account.get("scopes", [])),
@@ -368,7 +374,7 @@ def get_weekly_report_email_history(
     query: str | None = None,
     max_results: int = 6,
 ) -> WeeklyReportHistoryResponse:
-    """Return recent 515-style sent emails for the connected Gmail account."""
+    """Return recent 515-style sent emails for the connected Outlook account."""
 
     try:
         result = get_weekly_report_history(
@@ -421,6 +427,7 @@ def create_weekly_report_draft(
         recipient=result.recipient,
         subject=result.subject,
         body=result.body,
+        body_html=result.body_html,
         model=result.model,
         source_examples=[_weekly_report_message_to_response(message) for message in result.source_examples],
         last_week_email=(
@@ -445,6 +452,7 @@ def revise_weekly_report_draft(
             account_email=payload.account_email,
             current_subject=payload.current_subject,
             current_body=payload.current_body,
+            current_body_html=payload.current_body_html,
             revision_instructions=payload.revision_instructions,
         )
     except RuntimeError as exc:
@@ -457,6 +465,7 @@ def revise_weekly_report_draft(
         recipient=payload.recipient or "",
         subject=result.subject,
         body=result.body,
+        body_html=result.body_html,
         model=result.model,
         source_examples=[],
         last_week_email=None,
@@ -470,7 +479,7 @@ def revise_weekly_report_draft(
 def send_approved_weekly_report(
     payload: WeeklyReportSendRequest,
 ) -> WeeklyReportSendResponse:
-    """Send the approved 515 email through Gmail."""
+    """Send the approved 515 email through Microsoft Graph."""
 
     try:
         result = send_weekly_report(
@@ -478,6 +487,7 @@ def send_approved_weekly_report(
             recipient=payload.recipient,
             subject=payload.subject,
             body=payload.body,
+            body_html=payload.body_html,
             confirm_send=payload.confirm_send,
         )
     except RuntimeError as exc:
@@ -489,8 +499,8 @@ def send_approved_weekly_report(
         account_email=result.account_email,
         recipient=result.recipient,
         subject=result.subject,
-        gmail_message_id=result.gmail_message_id,
-        gmail_thread_id=result.gmail_thread_id,
+        graph_message_id=result.graph_message_id,
+        graph_conversation_id=result.graph_conversation_id,
     )
 
 
@@ -498,10 +508,10 @@ def send_approved_weekly_report(
     "/agents/weekly-report/save-draft",
     response_model=WeeklyReportSaveDraftResponse,
 )
-def save_weekly_report_as_gmail_draft(
+def save_weekly_report_as_outlook_draft(
     payload: WeeklyReportSaveDraftRequest,
 ) -> WeeklyReportSaveDraftResponse:
-    """Save the current 515 email in Gmail Drafts without sending it."""
+    """Save the current 515 email in Outlook Drafts without sending it."""
 
     try:
         result = save_weekly_report_draft(
@@ -509,6 +519,7 @@ def save_weekly_report_as_gmail_draft(
             recipient=payload.recipient,
             subject=payload.subject,
             body=payload.body,
+            body_html=payload.body_html,
         )
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -519,6 +530,6 @@ def save_weekly_report_as_gmail_draft(
         account_email=result.account_email,
         recipient=result.recipient,
         subject=result.subject,
-        gmail_draft_id=result.gmail_draft_id,
-        gmail_message_id=result.gmail_message_id,
+        graph_message_id=result.graph_message_id,
+        graph_conversation_id=result.graph_conversation_id,
     )
