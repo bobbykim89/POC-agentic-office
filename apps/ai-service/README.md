@@ -18,6 +18,13 @@ There is no local `app/agents` implementation in the current version.
 - `POST /agents/sprite-sheet`: accepts either a description or an uploaded image, generates a sprite sheet, validates it, retries up to 3 times, and saves the final PNG locally
 - If Cloudinary credentials are configured, generated sprite sheets are also uploaded to Cloudinary and the response includes hosted asset metadata
 - `GET /agents/ai-news`: fetches a recent AI-related news item, picks one at random, and summarizes it in plain language
+- `GET /agents/weekly-report/google/auth/start`: starts Google OAuth so a user can connect Gmail
+- `GET /agents/weekly-report/google/auth/callback`: stores the Gmail OAuth tokens after consent
+- `GET /agents/weekly-report/google/accounts`: lists connected Gmail accounts
+- `GET /agents/weekly-report/history`: fetches recent sent 515-style emails
+- `POST /agents/weekly-report/draft`: drafts a 515 email from a rough weekly summary and prior examples
+- `POST /agents/weekly-report/revise`: revises a draft based on user feedback
+- `POST /agents/weekly-report/send`: sends the approved 515 email through Gmail
 
 Example request:
 
@@ -58,10 +65,17 @@ CLOUDINARY_CLOUD_NAME=your_cloud_name_here
 CLOUDINARY_API_KEY=your_api_key_here
 CLOUDINARY_API_SECRET=your_api_secret_here
 CLOUDINARY_SPRITE_FOLDER=agentic-office/sprites
+OPENAI_515_MODEL=gpt-5-mini
+GOOGLE_OAUTH_CLIENT_ID=your_google_oauth_client_id
+GOOGLE_OAUTH_CLIENT_SECRET=your_google_oauth_client_secret
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8001/agents/weekly-report/google/auth/callback
+WEEKLY_REPORT_GMAIL_QUERY=in:sent subject:(515 report) newer_than:30d
+WEEKLY_REPORT_DEFAULT_TO=
 ```
 
 `FINAL_SPRITE_HEIGHT` defaults to `256`. The pipeline rescales the final PNG to that height while preserving aspect ratio.
 If the `CLOUDINARY_*` vars are set, the sprite response includes `storage_record.cloudinary.secure_url`.
+The weekly report agent stores connected Gmail account tokens locally under `apps/ai-service/generated/weekly_reports` in this first version.
 
 ## Run locally
 
@@ -103,3 +117,69 @@ curl -X POST http://localhost:8001/agents/sprite-sheet \
 Run on the main project folder.
 
 The generated sprite sheet is saved locally under `apps/ai-service/generated/sprites` by default. When Cloudinary is configured, the same response also includes hosted asset metadata and a URL you can use directly in the frontend.
+
+## Test the weekly report Gmail flow
+
+1. Create a Google OAuth web app and add `http://localhost:8001/agents/weekly-report/google/auth/callback` as an authorized redirect URI.
+2. Put `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`, and `OPENAI_API_KEY` in `apps/ai-service/.env`.
+3. Start the service:
+
+```bash
+uvicorn app.main:app --reload --port 8001
+```
+
+4. Start auth and open the returned `authorization_url` in a browser:
+
+```bash
+curl http://localhost:8001/agents/weekly-report/google/auth/start
+```
+
+5. After consent, the callback stores the Gmail account locally. You can verify connected accounts:
+
+```bash
+curl http://localhost:8001/agents/weekly-report/google/accounts
+```
+
+6. Fetch recent 515 examples:
+
+```bash
+curl "http://localhost:8001/agents/weekly-report/history?account_email=your.asu@asu.edu"
+```
+
+7. Draft a new 515 from a rough summary:
+
+```bash
+curl -X POST http://localhost:8001/agents/weekly-report/draft \
+  -H "Content-Type: application/json" \
+  -d '{
+    "account_email":"your.asu@asu.edu",
+    "weekly_summary":"I wrapped up the sprite generator fixes, tested Cloudinary uploads, and started shaping the 515 workflow. Next week I want to keep moving on the Gmail integration and clean up a few rough edges."
+  }'
+```
+
+8. Revise the draft if needed:
+
+```bash
+curl -X POST http://localhost:8001/agents/weekly-report/revise \
+  -H "Content-Type: application/json" \
+  -d '{
+    "account_email":"your.asu@asu.edu",
+    "current_subject":"515 Report",
+    "current_body":"Draft body here",
+    "revision_instructions":"Make this a little more concise and slightly more formal."
+  }'
+```
+
+9. Send only after approval:
+
+```bash
+curl -X POST http://localhost:8001/agents/weekly-report/send \
+  -H "Content-Type: application/json" \
+  -d '{
+    "account_email":"your.asu@asu.edu",
+    "recipient":"manager@asu.edu",
+    "subject":"515 Report",
+    "body":"Final approved draft here",
+    "confirm_send":true
+  }'
+```

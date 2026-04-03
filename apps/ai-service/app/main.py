@@ -5,9 +5,17 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.services import (
+    WeeklyReportMessage,
+    draft_weekly_report,
+    finish_google_gmail_auth,
     generate_character_sprite_sheet,
     generate_linkedin_post_with_openai,
     get_random_ai_news_summary,
+    get_weekly_report_history,
+    list_connected_google_accounts,
+    revise_weekly_report,
+    send_weekly_report,
+    start_google_gmail_auth,
     validation_to_dict,
 )
 
@@ -68,12 +76,106 @@ class AINewsResponse(BaseModel):
     model: str
 
 
+class WeeklyReportMessageResponse(BaseModel):
+    message_id: str
+    thread_id: str | None
+    subject: str
+    sent_at: str | None
+    to: list[str]
+    cc: list[str]
+    snippet: str
+    body_text: str
+
+
+class GoogleAuthStartResponse(BaseModel):
+    authorization_url: str
+    state: str
+
+
+class GoogleAuthFinishResponse(BaseModel):
+    account_email: str
+    connected_at: str
+    scopes: list[str]
+
+
+class ConnectedGoogleAccountResponse(BaseModel):
+    account_email: str
+    connected_at: str | None
+    scopes: list[str]
+
+
+class WeeklyReportHistoryResponse(BaseModel):
+    account_email: str
+    query: str
+    emails: list[WeeklyReportMessageResponse]
+    last_week_email: WeeklyReportMessageResponse | None
+
+
+class WeeklyReportDraftRequest(BaseModel):
+    account_email: str
+    weekly_summary: str = Field(min_length=1, max_length=3000)
+    query: str | None = None
+    max_examples: int = Field(default=4, ge=1, le=10)
+    recipient_override: str | None = None
+    subject_override: str | None = None
+
+
+class WeeklyReportReviseRequest(BaseModel):
+    account_email: str
+    current_subject: str = Field(min_length=1, max_length=300)
+    current_body: str = Field(min_length=1, max_length=12000)
+    revision_instructions: str = Field(min_length=1, max_length=3000)
+    recipient: str | None = None
+
+
+class WeeklyReportDraftResponse(BaseModel):
+    account_email: str
+    recipient: str
+    subject: str
+    body: str
+    model: str
+    source_examples: list[WeeklyReportMessageResponse]
+    last_week_email: WeeklyReportMessageResponse | None
+
+
+class WeeklyReportSendRequest(BaseModel):
+    account_email: str
+    recipient: str = Field(min_length=1, max_length=320)
+    subject: str = Field(min_length=1, max_length=300)
+    body: str = Field(min_length=1, max_length=12000)
+    confirm_send: bool = Field(
+        default=False,
+        description="Must be true or the API will refuse to send the message.",
+    )
+
+
+class WeeklyReportSendResponse(BaseModel):
+    account_email: str
+    recipient: str
+    subject: str
+    gmail_message_id: str
+    gmail_thread_id: str | None
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     return HealthResponse(
         status="ok",
         service="ai-service",
         timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def _weekly_report_message_to_response(message: WeeklyReportMessage) -> WeeklyReportMessageResponse:
+    return WeeklyReportMessageResponse(
+        message_id=message.message_id,
+        thread_id=message.thread_id,
+        subject=message.subject,
+        sent_at=message.sent_at,
+        to=message.to,
+        cc=message.cc,
+        snippet=message.snippet,
+        body_text=message.body_text,
     )
 
 
@@ -170,4 +272,207 @@ def get_ai_news() -> AINewsResponse:
         article_url=result.article_url,
         paragraph=result.paragraph,
         model=result.model,
+    )
+
+
+@app.get(
+    "/agents/weekly-report/google/auth/start",
+    response_model=GoogleAuthStartResponse,
+)
+def start_weekly_report_google_auth() -> GoogleAuthStartResponse:
+    """Start the Google OAuth flow for Gmail access."""
+
+    try:
+        result = start_google_gmail_auth()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Google auth start failed: {exc}") from exc
+
+    return GoogleAuthStartResponse(
+        authorization_url=result["authorization_url"],
+        state=result["state"],
+    )
+
+
+@app.get(
+    "/agents/weekly-report/google/auth/callback",
+    response_model=GoogleAuthFinishResponse,
+)
+def finish_weekly_report_google_auth(
+    state: str,
+    code: str,
+) -> GoogleAuthFinishResponse:
+    """Finish the Google OAuth flow and persist credentials."""
+
+    try:
+        result = finish_google_gmail_auth(state=state, code=code)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Google auth callback failed: {exc}") from exc
+
+    return GoogleAuthFinishResponse(
+        account_email=result["account_email"],
+        connected_at=result["connected_at"],
+        scopes=result["scopes"],
+    )
+
+
+@app.get(
+    "/agents/weekly-report/google/accounts",
+    response_model=list[ConnectedGoogleAccountResponse],
+)
+def get_connected_weekly_report_accounts() -> list[ConnectedGoogleAccountResponse]:
+    """List Gmail accounts connected for the weekly report workflow."""
+
+    try:
+        accounts = list_connected_google_accounts()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Listing Google accounts failed: {exc}") from exc
+
+    return [
+        ConnectedGoogleAccountResponse(
+            account_email=account["account_email"],
+            connected_at=account.get("connected_at"),
+            scopes=list(account.get("scopes", [])),
+        )
+        for account in accounts
+    ]
+
+
+@app.get(
+    "/agents/weekly-report/history",
+    response_model=WeeklyReportHistoryResponse,
+)
+def get_weekly_report_email_history(
+    account_email: str,
+    query: str | None = None,
+    max_results: int = 6,
+) -> WeeklyReportHistoryResponse:
+    """Return recent 515-style sent emails for the connected Gmail account."""
+
+    try:
+        result = get_weekly_report_history(
+            account_email=account_email,
+            query=query,
+            max_results=max_results,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Weekly report history failed: {exc}") from exc
+
+    return WeeklyReportHistoryResponse(
+        account_email=result.account_email,
+        query=result.query,
+        emails=[_weekly_report_message_to_response(message) for message in result.emails],
+        last_week_email=(
+            _weekly_report_message_to_response(result.last_week_email)
+            if result.last_week_email
+            else None
+        ),
+    )
+
+
+@app.post(
+    "/agents/weekly-report/draft",
+    response_model=WeeklyReportDraftResponse,
+)
+def create_weekly_report_draft(
+    payload: WeeklyReportDraftRequest,
+) -> WeeklyReportDraftResponse:
+    """Draft a weekly 515 email from a rough summary and prior examples."""
+
+    try:
+        result = draft_weekly_report(
+            account_email=payload.account_email,
+            weekly_summary=payload.weekly_summary,
+            query=payload.query,
+            max_examples=payload.max_examples,
+            recipient_override=payload.recipient_override,
+            subject_override=payload.subject_override,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Weekly report draft failed: {exc}") from exc
+
+    return WeeklyReportDraftResponse(
+        account_email=result.account_email,
+        recipient=result.recipient,
+        subject=result.subject,
+        body=result.body,
+        model=result.model,
+        source_examples=[_weekly_report_message_to_response(message) for message in result.source_examples],
+        last_week_email=(
+            _weekly_report_message_to_response(result.last_week_email)
+            if result.last_week_email
+            else None
+        ),
+    )
+
+
+@app.post(
+    "/agents/weekly-report/revise",
+    response_model=WeeklyReportDraftResponse,
+)
+def revise_weekly_report_draft(
+    payload: WeeklyReportReviseRequest,
+) -> WeeklyReportDraftResponse:
+    """Revise an in-progress 515 email draft."""
+
+    try:
+        result = revise_weekly_report(
+            account_email=payload.account_email,
+            current_subject=payload.current_subject,
+            current_body=payload.current_body,
+            revision_instructions=payload.revision_instructions,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Weekly report revise failed: {exc}") from exc
+
+    return WeeklyReportDraftResponse(
+        account_email=result.account_email,
+        recipient=payload.recipient or "",
+        subject=result.subject,
+        body=result.body,
+        model=result.model,
+        source_examples=[],
+        last_week_email=None,
+    )
+
+
+@app.post(
+    "/agents/weekly-report/send",
+    response_model=WeeklyReportSendResponse,
+)
+def send_approved_weekly_report(
+    payload: WeeklyReportSendRequest,
+) -> WeeklyReportSendResponse:
+    """Send the approved 515 email through Gmail."""
+
+    try:
+        result = send_weekly_report(
+            account_email=payload.account_email,
+            recipient=payload.recipient,
+            subject=payload.subject,
+            body=payload.body,
+            confirm_send=payload.confirm_send,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Weekly report send failed: {exc}") from exc
+
+    return WeeklyReportSendResponse(
+        account_email=result.account_email,
+        recipient=result.recipient,
+        subject=result.subject,
+        gmail_message_id=result.gmail_message_id,
+        gmail_thread_id=result.gmail_thread_id,
     )
