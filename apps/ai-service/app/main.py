@@ -14,6 +14,7 @@ from app.services import (
     get_weekly_report_history,
     list_connected_google_accounts,
     revise_weekly_report,
+    save_weekly_report_draft,
     send_weekly_report,
     start_google_gmail_auth,
     validation_to_dict,
@@ -155,6 +156,21 @@ class WeeklyReportSendResponse(BaseModel):
     subject: str
     gmail_message_id: str
     gmail_thread_id: str | None
+
+
+class WeeklyReportSaveDraftRequest(BaseModel):
+    account_email: str
+    recipient: str = Field(min_length=1, max_length=320)
+    subject: str = Field(min_length=1, max_length=300)
+    body: str = Field(min_length=1, max_length=12000)
+
+
+class WeeklyReportSaveDraftResponse(BaseModel):
+    account_email: str
+    recipient: str
+    subject: str
+    gmail_draft_id: str
+    gmail_message_id: str | None
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -475,4 +491,34 @@ def send_approved_weekly_report(
         subject=result.subject,
         gmail_message_id=result.gmail_message_id,
         gmail_thread_id=result.gmail_thread_id,
+    )
+
+
+@app.post(
+    "/agents/weekly-report/save-draft",
+    response_model=WeeklyReportSaveDraftResponse,
+)
+def save_weekly_report_as_gmail_draft(
+    payload: WeeklyReportSaveDraftRequest,
+) -> WeeklyReportSaveDraftResponse:
+    """Save the current 515 email in Gmail Drafts without sending it."""
+
+    try:
+        result = save_weekly_report_draft(
+            account_email=payload.account_email,
+            recipient=payload.recipient,
+            subject=payload.subject,
+            body=payload.body,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Weekly report draft save failed: {exc}") from exc
+
+    return WeeklyReportSaveDraftResponse(
+        account_email=result.account_email,
+        recipient=result.recipient,
+        subject=result.subject,
+        gmail_draft_id=result.gmail_draft_id,
+        gmail_message_id=result.gmail_message_id,
     )
