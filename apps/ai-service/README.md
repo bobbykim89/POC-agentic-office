@@ -24,6 +24,7 @@ There is no local `app/agents` implementation in the current version.
 - `GET /agents/weekly-report/history`: fetches recent sent 515-style emails
 - `POST /agents/weekly-report/draft`: drafts a 515 email from a rough weekly summary and prior examples
 - `POST /agents/weekly-report/revise`: revises a draft based on user feedback
+- `POST /agents/weekly-report/save-draft`: saves the current 515 draft to Gmail Drafts without sending it
 - `POST /agents/weekly-report/send`: sends the approved 515 email through Gmail
 
 Example request:
@@ -170,7 +171,20 @@ curl -X POST http://localhost:8001/agents/weekly-report/revise \
   }'
 ```
 
-9. Send only after approval:
+9. Save to Gmail Drafts if you do not want to send yet:
+
+```bash
+curl -X POST http://localhost:8001/agents/weekly-report/save-draft \
+  -H "Content-Type: application/json" \
+  -d '{
+    "account_email":"your.asu@asu.edu",
+    "recipient":"manager@asu.edu",
+    "subject":"515 Report",
+    "body":"Final draft you want to keep in Gmail drafts"
+  }'
+```
+
+10. Send only after approval:
 
 ```bash
 curl -X POST http://localhost:8001/agents/weekly-report/send \

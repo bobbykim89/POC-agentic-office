@@ -27,6 +27,7 @@ DEFAULT_WEEKLY_REPORT_MAX_RESULTS = 6
 DEFAULT_WEEKLY_REPORT_RECIPIENT = ""
 GOOGLE_GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.compose",
     "https://www.googleapis.com/auth/gmail.send",
 ]
 
@@ -69,6 +70,15 @@ class WeeklyReportSendResult:
     subject: str
     gmail_message_id: str
     gmail_thread_id: str | None
+
+
+@dataclass(frozen=True)
+class WeeklyReportSaveDraftResult:
+    account_email: str
+    recipient: str
+    subject: str
+    gmail_draft_id: str
+    gmail_message_id: str | None
 
 
 def start_google_gmail_auth() -> dict[str, str]:
@@ -307,6 +317,49 @@ def send_weekly_report(
     )
 
 
+def save_weekly_report_draft(
+    *,
+    account_email: str,
+    recipient: str,
+    subject: str,
+    body: str,
+) -> WeeklyReportSaveDraftResult:
+    """Save the current weekly report draft into Gmail Drafts without sending."""
+
+    normalized_recipient = recipient.strip()
+    normalized_subject = subject.strip()
+    normalized_body = body.strip()
+    if not normalized_recipient:
+        raise RuntimeError("Provide a recipient email before saving a Gmail draft.")
+    if not normalized_subject:
+        raise RuntimeError("Provide a subject before saving a Gmail draft.")
+    if not normalized_body:
+        raise RuntimeError("Provide a body before saving a Gmail draft.")
+
+    gmail_service, _ = _build_gmail_service(account_email)
+    raw_message = _build_raw_gmail_message(
+        account_email=account_email,
+        recipient=normalized_recipient,
+        subject=normalized_subject,
+        body=normalized_body,
+    )
+    response = (
+        gmail_service.users()
+        .drafts()
+        .create(userId="me", body={"message": {"raw": raw_message}})
+        .execute()
+    )
+
+    message = response.get("message", {}) or {}
+    return WeeklyReportSaveDraftResult(
+        account_email=account_email,
+        recipient=normalized_recipient,
+        subject=normalized_subject,
+        gmail_draft_id=str(response.get("id") or ""),
+        gmail_message_id=message.get("id"),
+    )
+
+
 def _build_google_oauth_flow(*, state: str | None = None) -> Flow:
     """Build the Google OAuth flow from service env configuration."""
 
@@ -402,6 +455,23 @@ def _fetch_and_parse_gmail_message(*, gmail_service: Any, message_id: str) -> We
         snippet=str(message.get("snippet") or "").strip(),
         body_text=_extract_gmail_body_text(payload),
     )
+
+
+def _build_raw_gmail_message(
+    *,
+    account_email: str,
+    recipient: str,
+    subject: str,
+    body: str,
+) -> str:
+    """Build a Gmail-compatible raw MIME message for send or draft save."""
+
+    message = EmailMessage()
+    message["To"] = recipient
+    message["From"] = account_email
+    message["Subject"] = subject
+    message.set_content(body)
+    return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
 
 def _extract_gmail_body_text(payload: dict[str, Any]) -> str:
