@@ -17,6 +17,28 @@ const FALLBACK_FRAME_WIDTH = 72;
 const FALLBACK_FRAME_HEIGHT = 108;
 const MOVE_SPEED = 220;
 const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(30, 140, 1200, 650);
+const DEBUG_ZONE_FILL_ALPHA = 0.12;
+const DEBUG_ZONE_STROKE_ALPHA = 0.7;
+const BLOCKED_ZONES = [
+  // this is the main meeting room
+  new Phaser.Geom.Rectangle(560, 230, 370, 80),
+  new Phaser.Geom.Rectangle(550, 230, 30, 195),
+  new Phaser.Geom.Rectangle(550, 420, 120, 50),
+  new Phaser.Geom.Rectangle(760, 420, 170, 50),
+  // this is the computer rooms
+  new Phaser.Geom.Rectangle(135, 110, 30, 320),
+  new Phaser.Geom.Rectangle(135, 180, 215, 110),
+  new Phaser.Geom.Rectangle(135, 330, 250, 60),
+  new Phaser.Geom.Rectangle(135, 420, 250, 60),
+  // this is the video room
+  new Phaser.Geom.Rectangle(377, 110, 30, 90),
+  new Phaser.Geom.Rectangle(555, 110, 30, 90),
+  // this is the elevator
+  new Phaser.Geom.Rectangle(1015, 405, 220, 70),
+  new Phaser.Geom.Rectangle(1015, 405, 25, 90),
+  new Phaser.Geom.Rectangle(1015, 520, 25, 90),
+  new Phaser.Geom.Rectangle(1015, 560, 220, 90),
+];
 const INITIAL_ACTOR_POSITION = new Phaser.Math.Vector2(640, 560);
 const TARGET_ACTOR_HEIGHT = 108;
 
@@ -77,16 +99,7 @@ class OfficeScene extends Phaser.Scene {
     this.actorVelocity.copy(movement);
     if (this.actorVelocity.lengthSq() > 0) {
       this.actorVelocity.normalize().scale(MOVE_SPEED * elapsed);
-      this.actor.x = Phaser.Math.Clamp(
-        this.actor.x + this.actorVelocity.x,
-        CHARACTER_BOUNDS.left,
-        CHARACTER_BOUNDS.right,
-      );
-      this.actor.y = Phaser.Math.Clamp(
-        this.actor.y + this.actorVelocity.y,
-        CHARACTER_BOUNDS.top,
-        CHARACTER_BOUNDS.bottom,
-      );
+      this.moveActor(this.actorVelocity.x, this.actorVelocity.y);
       this.updateFacingFromVelocity(movement);
     }
   }
@@ -96,16 +109,10 @@ class OfficeScene extends Phaser.Scene {
       .image(GAME_WIDTH / 2, GAME_HEIGHT / 2, BACKDROP_KEY)
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
 
-    this.add
-      .rectangle(
-        CHARACTER_BOUNDS.centerX,
-        CHARACTER_BOUNDS.centerY,
-        CHARACTER_BOUNDS.width,
-        CHARACTER_BOUNDS.height,
-        0x000000,
-        0,
-      )
-      .setStrokeStyle(3, 0x86a4bf, 0.7);
+    this.drawDebugZone(CHARACTER_BOUNDS, 0x86a4bf, 0x000000, 0);
+    BLOCKED_ZONES.forEach((zone) => {
+      this.drawDebugZone(zone, 0x86a4bf, 0x86a4bf, DEBUG_ZONE_FILL_ALPHA);
+    });
   }
 
   private createDirectionalTextures() {
@@ -285,6 +292,48 @@ class OfficeScene extends Phaser.Scene {
     ctx.fillRect(x, y, width, height);
     ctx.strokeStyle = stroke;
     ctx.strokeRect(x, y, width, height);
+  }
+
+  private moveActor(deltaX: number, deltaY: number) {
+    const nextX = Phaser.Math.Clamp(
+      this.actor.x + deltaX,
+      CHARACTER_BOUNDS.left,
+      CHARACTER_BOUNDS.right,
+    );
+    if (this.canOccupy(nextX, this.actor.y)) {
+      this.actor.x = nextX;
+    }
+
+    const nextY = Phaser.Math.Clamp(
+      this.actor.y + deltaY,
+      CHARACTER_BOUNDS.top,
+      CHARACTER_BOUNDS.bottom,
+    );
+    if (this.canOccupy(this.actor.x, nextY)) {
+      this.actor.y = nextY;
+    }
+  }
+
+  private canOccupy(x: number, y: number) {
+    return !BLOCKED_ZONES.some((zone) => zone.contains(x, y));
+  }
+
+  private drawDebugZone(
+    zone: Phaser.Geom.Rectangle,
+    strokeColor: number,
+    fillColor: number,
+    fillAlpha: number,
+  ) {
+    this.add
+      .rectangle(
+        zone.centerX,
+        zone.centerY,
+        zone.width,
+        zone.height,
+        fillColor,
+        fillAlpha,
+      )
+      .setStrokeStyle(3, strokeColor, DEBUG_ZONE_STROKE_ALPHA);
   }
 
   private readMovementInput() {
