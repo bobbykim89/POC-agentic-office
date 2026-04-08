@@ -1,16 +1,24 @@
-import Phaser from 'phaser';
+import Phaser from "phaser";
 
-type FacingDirection = 'front' | 'back' | 'left' | 'right';
+type FacingDirection = "front" | "back" | "left" | "right";
 
-const BACKDROP_KEY = 'office-map';
-const BACKDROP_PATH = '/maps/background-office-map.png';
-const EXTERNAL_SPRITE_SHEET_KEY = 'office-worker-sheet';
-const EXTERNAL_SPRITE_SHEET_PATH = '/sprites/office-worker-directions.png';
-const SHEET_DIRECTION_ORDER: Array<Exclude<FacingDirection, 'left'>> = ['front', 'back', 'right'];
+const GAME_WIDTH = 1280;
+const GAME_HEIGHT = 800;
+const BACKDROP_KEY = "office-map";
+const BACKDROP_PATH = "/maps/background-office-map.png";
+const EXTERNAL_SPRITE_SHEET_KEY = "office-worker-sheet";
+const EXTERNAL_SPRITE_SHEET_PATH = "/sprites/office-worker-directions.png";
+const SHEET_DIRECTION_ORDER: Array<Exclude<FacingDirection, "left">> = [
+  "front",
+  "back",
+  "right",
+];
 const FALLBACK_FRAME_WIDTH = 72;
 const FALLBACK_FRAME_HEIGHT = 108;
 const MOVE_SPEED = 220;
-const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(72, 160, 816, 360);
+const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(30, 140, 1200, 650);
+const INITIAL_ACTOR_POSITION = new Phaser.Math.Vector2(640, 560);
+const TARGET_ACTOR_HEIGHT = 108;
 
 class OfficeScene extends Phaser.Scene {
   private arrowKeys!: {
@@ -20,11 +28,11 @@ class OfficeScene extends Phaser.Scene {
     right: Phaser.Input.Keyboard.Key;
   };
   private actor!: Phaser.GameObjects.Image;
-  private facing: FacingDirection = 'front';
+  private facing: FacingDirection = "front";
   private actorVelocity = new Phaser.Math.Vector2(0, 0);
 
   constructor() {
-    super('office-scene');
+    super("office-scene");
   }
 
   preload() {
@@ -33,18 +41,25 @@ class OfficeScene extends Phaser.Scene {
   }
 
   create() {
-    this.cameras.main.setBackgroundColor('#122033');
+    this.cameras.main.setBackgroundColor("#122033");
     this.createBackdrop();
     this.createDirectionalTextures();
 
     this.actor = this.add
-      .image(480, 420, this.getTextureKeyForDirection(this.facing))
+      .image(
+        INITIAL_ACTOR_POSITION.x,
+        INITIAL_ACTOR_POSITION.y,
+        this.getTextureKeyForDirection(this.facing),
+      )
       .setOrigin(0.5, 1);
 
-    const actorTexture = this.textures.get(this.getTextureKeyForDirection(this.facing));
-    const actorSource = actorTexture.getSourceImage() as HTMLCanvasElement | HTMLImageElement;
-    const targetHeight = 132;
-    this.actor.setScale(targetHeight / actorSource.height);
+    const actorTexture = this.textures.get(
+      this.getTextureKeyForDirection(this.facing),
+    );
+    const actorSource = actorTexture.getSourceImage() as
+      | HTMLCanvasElement
+      | HTMLImageElement;
+    this.actor.setScale(TARGET_ACTOR_HEIGHT / actorSource.height);
 
     this.input.keyboard?.disableGlobalCapture();
     this.arrowKeys = this.input.keyboard!.addKeys({
@@ -52,7 +67,7 @@ class OfficeScene extends Phaser.Scene {
       down: Phaser.Input.Keyboard.KeyCodes.DOWN,
       left: Phaser.Input.Keyboard.KeyCodes.LEFT,
       right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
-    }) as OfficeScene['arrowKeys'];
+    }) as OfficeScene["arrowKeys"];
   }
 
   update(_: number, delta: number) {
@@ -77,10 +92,19 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private createBackdrop() {
-    this.add.image(480, 300, BACKDROP_KEY).setDisplaySize(960, 600);
+    this.add
+      .image(GAME_WIDTH / 2, GAME_HEIGHT / 2, BACKDROP_KEY)
+      .setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
 
     this.add
-      .rectangle(480, 420, CHARACTER_BOUNDS.width, CHARACTER_BOUNDS.height, 0x000000, 0)
+      .rectangle(
+        CHARACTER_BOUNDS.centerX,
+        CHARACTER_BOUNDS.centerY,
+        CHARACTER_BOUNDS.width,
+        CHARACTER_BOUNDS.height,
+        0x000000,
+        0,
+      )
       .setStrokeStyle(3, 0x86a4bf, 0.7);
   }
 
@@ -105,7 +129,11 @@ class OfficeScene extends Phaser.Scene {
         return;
       }
 
-      const canvasTexture = this.textures.createCanvas(textureKey, frameWidth, frameHeight);
+      const canvasTexture = this.textures.createCanvas(
+        textureKey,
+        frameWidth,
+        frameHeight,
+      );
       if (!canvasTexture) {
         return;
       }
@@ -129,7 +157,7 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private createFallbackDirectionalTextures() {
-    (['front', 'back', 'right'] as const).forEach((direction) => {
+    (["front", "back", "right"] as const).forEach((direction) => {
       const textureKey = this.getTextureKeyForDirection(direction);
       if (this.textures.exists(textureKey)) {
         return;
@@ -157,31 +185,34 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private drawFallbackShadow(ctx: CanvasRenderingContext2D) {
-    ctx.fillStyle = 'rgba(8, 15, 26, 0.24)';
+    ctx.fillStyle = "rgba(8, 15, 26, 0.24)";
     ctx.beginPath();
     ctx.ellipse(36, 102, 19, 4, 0, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  private drawFallbackBody(ctx: CanvasRenderingContext2D, direction: FacingDirection) {
-    const skin = '#f0be98';
-    const hair = '#e7bf62';
-    const shirt = '#f1ebdb';
-    const pants = '#d7c2a1';
-    const shoes = '#5d3626';
-    const outline = '#3a2318';
-    const laptop = '#3f4552';
+  private drawFallbackBody(
+    ctx: CanvasRenderingContext2D,
+    direction: FacingDirection,
+  ) {
+    const skin = "#f0be98";
+    const hair = "#e7bf62";
+    const shirt = "#f1ebdb";
+    const pants = "#d7c2a1";
+    const shoes = "#5d3626";
+    const outline = "#3a2318";
+    const laptop = "#3f4552";
 
     ctx.strokeStyle = outline;
     ctx.lineWidth = 2;
 
-    if (direction === 'front' || direction === 'back') {
-      const isFront = direction === 'front';
+    if (direction === "front" || direction === "back") {
+      const isFront = direction === "front";
       this.fillRect(ctx, 24, 10, 24, 28, hair, outline);
       this.fillRect(ctx, 26, 18, 20, 18, skin, outline);
       if (isFront) {
-        this.fillRect(ctx, 20, 20, 8, 6, '#253142', outline);
-        this.fillRect(ctx, 44, 20, 8, 6, '#253142', outline);
+        this.fillRect(ctx, 20, 20, 8, 6, "#253142", outline);
+        this.fillRect(ctx, 44, 20, 8, 6, "#253142", outline);
       }
       this.fillRect(ctx, 24, 40, 24, 26, shirt, outline);
       this.fillRect(ctx, 22, 66, 28, 22, pants, outline);
@@ -198,7 +229,7 @@ class OfficeScene extends Phaser.Scene {
     const offsetX = 18;
     this.fillRect(ctx, offsetX, 10, 22, 28, hair, outline);
     this.fillRect(ctx, offsetX + 2, 18, 18, 18, skin, outline);
-    this.fillRect(ctx, offsetX + 4, 20, 6, 6, '#253142', outline);
+    this.fillRect(ctx, offsetX + 4, 20, 6, 6, "#253142", outline);
     this.fillRect(ctx, offsetX + 6, 40, 18, 26, shirt, outline);
     this.fillRect(ctx, offsetX + 8, 66, 16, 22, pants, outline);
     this.fillRect(ctx, 12, 52, 12, 24, laptop, outline);
@@ -209,16 +240,25 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private createFlippedLeftTexture() {
-    const rightTextureKey = this.getTextureKeyForDirection('right');
-    const leftTextureKey = this.getTextureKeyForDirection('left');
+    const rightTextureKey = this.getTextureKeyForDirection("right");
+    const leftTextureKey = this.getTextureKeyForDirection("left");
 
-    if (!this.textures.exists(rightTextureKey) || this.textures.exists(leftTextureKey)) {
+    if (
+      !this.textures.exists(rightTextureKey) ||
+      this.textures.exists(leftTextureKey)
+    ) {
       return;
     }
 
     const rightTexture = this.textures.get(rightTextureKey);
-    const source = rightTexture.getSourceImage() as HTMLCanvasElement | HTMLImageElement;
-    const canvasTexture = this.textures.createCanvas(leftTextureKey, source.width, source.height);
+    const source = rightTexture.getSourceImage() as
+      | HTMLCanvasElement
+      | HTMLImageElement;
+    const canvasTexture = this.textures.createCanvas(
+      leftTextureKey,
+      source.width,
+      source.height,
+    );
     if (!canvasTexture) {
       return;
     }
@@ -272,9 +312,9 @@ class OfficeScene extends Phaser.Scene {
     const tagName = active.tagName.toLowerCase();
     return (
       active.isContentEditable ||
-      tagName === 'input' ||
-      tagName === 'textarea' ||
-      tagName === 'select'
+      tagName === "input" ||
+      tagName === "textarea" ||
+      tagName === "select"
     );
   }
 
@@ -282,11 +322,11 @@ class OfficeScene extends Phaser.Scene {
     const nextDirection =
       Math.abs(movement.x) > Math.abs(movement.y)
         ? movement.x > 0
-          ? 'right'
-          : 'left'
+          ? "right"
+          : "left"
         : movement.y > 0
-          ? 'front'
-          : 'back';
+          ? "front"
+          : "back";
 
     if (nextDirection === this.facing) {
       return;
@@ -306,10 +346,10 @@ export type OfficeGameInstance = Phaser.Game;
 export function createOfficeGame(parent: HTMLElement): OfficeGameInstance {
   return new Phaser.Game({
     type: Phaser.AUTO,
-    width: 960,
-    height: 600,
+    width: GAME_WIDTH,
+    height: GAME_HEIGHT,
     parent,
-    backgroundColor: '#122033',
+    backgroundColor: "#122033",
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
