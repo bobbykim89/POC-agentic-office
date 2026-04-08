@@ -37,6 +37,8 @@ MAX_GENERATION_RETRIES = 3
 TRANSPARENCY_ALPHA_THRESHOLD = 12
 VERTICAL_CROP_PADDING_PIXELS = 4
 GREEN_SCREEN = (0, 255, 0)
+WHITE_BACKGROUND_GUARD_BRIGHTNESS = 235
+WHITE_BACKGROUND_GUARD_SATURATION = 18
 SPRITE_PROMPT_TEMPLATE = """
 Create a pixel art sprite sheet of a single character.
 
@@ -50,13 +52,16 @@ Style:
 * Fine-grained pixel art with smaller pixel blocks, not oversized chunky pixels
 * Readable at low resolution, but with enough internal detail for the face, glasses, hair, and clothing to read clearly
 * Chibi-inspired proportions are preferred: slightly larger head, smaller body, and expressive face
-* Use a higher-detail sprite density, as if the source character sprite were around 128x128 to 192x192 pixels before being placed on the final sheet
-* Push toward the high end of that range, with a source-sprite feel closer to 192x192 than 128x128
+* Use a high-detail sprite density, as if each source character sprite were 256x256 pixels before being placed on the final sheet
+* 256x256-level internal detail is mandatory, not optional
 * Avoid the look of giant blocky pixels scaled up too far
 * Prefer a crisp, highly detailed sprite look closer to polished modern pixel-art characters than simplified retro sprites
-* Push the sprite detail one step higher, closer to a polished 192x192 pixel-art character sprite than a coarse overworld icon
+* Push the sprite detail to the level of a polished 256x256 pixel-art character sprite, never lower
 * Use enough detail that the sprite feels high-resolution for pixel art, not coarse or simplified
 * Make the avatar look cute, charming, and flattering while still preserving the person's recognizable features
+* Target the highest-detail pixel-art result possible within this image
+* Favor maximum internal detail, clean clustering, and polished finish over simplified or approximate sprite rendering
+* The sprite sheet should look premium, deliberate, and production-ready rather than draft quality
 
 Visual inspiration:
 
@@ -99,6 +104,11 @@ Sprite requirements:
 * Preserve key appearance details from the description, especially glasses, hairstyle, clothing, and handheld objects
 * Keep enough pixel detail to show the glasses shape, eye whites, mouth shape, and hair silhouette cleanly
 * Hands and held objects should also have enough pixel detail to read clearly
+* Clothing colors must read as continuous, intentional garment shapes rather than noisy broken patches
+* Keep the shirt, pants, skirt, jacket, and shoes as coherent color regions with clean seams and clean silhouette edges
+* Avoid isolated contrasting pixel clusters or vertical streaks in the crotch, pelvis, or inner-leg area that could read as accidental anatomy
+* Lower-body clothing must look like normal fabric folds and seams, never like exposed anatomy or suggestive protrusions
+* If a shading detail on clothing could be misread as anatomy, simplify or remove it
 * Preserve the approximate visible skin tone from the description accurately and do not make it significantly darker or lighter
 * Preserve nuanced visible skin tone and undertone details such as fair, light olive, olive, tan, warm beige, medium brown, or deep brown when described
 * Do not collapse skin tone into an overly broad category if the description is more specific
@@ -112,21 +122,35 @@ Poses (exactly 3):
 
 1. Facing forward (front view)
 2. Facing backward (back view)
-3. Facing right (side view)
+3. WALKING TOWARD THE RIGHT
 
 Pose enforcement:
 
 * The middle sprite must be a true back view of the same character
 * In the back view, the face must not be visible
+* The back-view head and torso must clearly face away from the viewer, not sideways and not three-quarter
 * Do not generate a left-facing side view
 * Do not generate three-quarter angles
-* Only one side view is allowed, and it must face right
+* Only one side view is allowed, and it must show the character WALKING TOWARD THE RIGHT
+* The side-view sprite must clearly show the character WALKING TOWARD THE RIGHT, with the face/profile and body travel direction pointing to the RIGHT side of the canvas
+* The third sprite should read as a character WALKING TOWARD THE RIGHT side of the screen
+* Use a gentle walking pose for the third sprite only, with a clear rightward travel read and no ambiguity about direction
+* The side-view sprite must not face left, must not look mirrored, and must not be directionally ambiguous
+* If the character is holding an object, keep the same handedness and orientation consistent with a character WALKING TOWARD THE RIGHT
+* Treat a left-facing side view as incorrect even if the sheet otherwise looks good
+* Treat any side view whose nose, face, chest, or gaze points left as a failure
+* Treat any mirrored, flipped, or ambiguous side profile as a failure
+* Before finalizing, verify again that the third sprite IS WALKING TOWARD THE RIGHT and never toward the left
+* If the third sprite is left-facing, discard it and regenerate the sheet
+* It is better to regenerate than to return a left-facing third sprite
 * If there is any ambiguity, prefer a strict back view for the middle sprite
 
 Constraints:
 
 * All sprites must represent the same character with identical proportions
 * No extra poses or variations
+* The first and second sprites should remain neutral standing turnaround views
+* The third sprite may use a subtle walking pose, but it must still be a clean single-pose turnaround sprite rather than an action scene
 
 Layout:
 
@@ -141,6 +165,7 @@ Layout:
 * Each sprite should feel like a detailed character sprite, not a tiny low-resolution sprite enlarged to fill the canvas
 * Keep the design crisp, but do not over-simplify the internal features
 * Treat each character as a polished, detailed sprite rather than a rough low-resolution placeholder
+* Preserve high-quality detail consistently across all three views; do not let one panel become blurrier, flatter, or more approximate than the others
 
 Background:
 
@@ -162,12 +187,21 @@ Output:
 * Leave a small transparent margin around the outer edges so no sprite is clipped at the left or right side
 * Prioritize facial readability over tiny decorative details
 * If there is any tradeoff between body detail and face detail, prioritize the face
+* Direction correctness is mandatory: the rightmost sprite must show the character WALKING TOWARD THE RIGHT, never left-facing
 * Do not crop or place the outer sprites so close to the image edge that any part of the character is cut off
 * Keep extra transparent breathing room on the far left and far right edges of the canvas
-* Use a denser sprite scale closer to a 192x192 source sprite per character, not a blown-up 16x16 or 32x32 sprite
-* Do not emulate 16x16, 24x24, or 32x32 sprite density
+* Use a dense sprite scale consistent with a 256x256 source sprite per character, not a blown-up 16x16 or 32x32 sprite
+* A 192x192-style result is not acceptable; the sprite must read at a 256x256-quality level
+* Anything below 256x256-quality internal detail is unacceptable and should be treated as a failed result
+* Do not emulate 16x16, 24x24, 32x32, 48x48, 64x64, 96x96, or 128x128 sprite density
 * If there is any ambiguity, choose the more detailed pixel-art interpretation
 * If there is any ambiguity, prefer higher internal sprite detail over larger chunky pixels
+* If there is any ambiguity about direction, regenerate the pose as an unmistakable character WALKING TOWARD THE RIGHT
+* A sheet with a left-facing third sprite is invalid and must not be returned
+* Return no sheet rather than a sheet whose third sprite faces left
+* Return no sheet rather than a sheet with broken clothing colors or accidental anatomy-like artifacts
+* If there is any tradeoff between speed and quality, choose quality
+* Avoid coarse, muddy, blurry, low-detail, or rushed-looking pixel art under all circumstances
 """.strip()
 
 
@@ -178,7 +212,10 @@ class SpriteValidationResult:
     generated_image_exists: bool
     has_exactly_three_views: bool
     order_is_front_back_right: bool
+    back_view_has_no_face: bool
+    side_view_faces_right: bool
     same_character_across_views: bool
+    clothing_colors_are_coherent: bool
     transparent_background: bool
     transparency_fixed: bool
     validator_model: str
@@ -190,7 +227,10 @@ class SpriteValidationResult:
             self.generated_image_exists
             and self.has_exactly_three_views
             and self.order_is_front_back_right
+            and self.back_view_has_no_face
+            and self.side_view_faces_right
             and self.same_character_across_views
+            and self.clothing_colors_are_coherent
             and self.transparent_background
         )
 
@@ -301,7 +341,10 @@ def generate_character_sprite_sheet(
                     generated_image_exists=validation.generated_image_exists,
                     has_exactly_three_views=validation.has_exactly_three_views,
                     order_is_front_back_right=validation.order_is_front_back_right,
+                    back_view_has_no_face=validation.back_view_has_no_face,
+                    side_view_faces_right=validation.side_view_faces_right,
                     same_character_across_views=validation.same_character_across_views,
+                    clothing_colors_are_coherent=validation.clothing_colors_are_coherent,
                     transparent_background=validation.transparent_background,
                     transparency_fixed=transparency_fixed or validation.transparency_fixed,
                     validator_model=validation.validator_model,
@@ -440,7 +483,10 @@ def _validate_sprite_sheet(
         generated_image_exists=generated_image_exists,
         has_exactly_three_views=bool(vision_result.get("has_exactly_three_views")),
         order_is_front_back_right=bool(vision_result.get("order_is_front_back_right")),
+        back_view_has_no_face=bool(vision_result.get("back_view_has_no_face")),
+        side_view_faces_right=bool(vision_result.get("side_view_faces_right")),
         same_character_across_views=bool(vision_result.get("same_character_across_views")),
+        clothing_colors_are_coherent=bool(vision_result.get("clothing_colors_are_coherent")),
         transparent_background=transparent_background,
         transparency_fixed=transparency_fixed,
         validator_model=_vision_model(),
@@ -467,11 +513,21 @@ def _vision_validate_sprite_sheet(
                         "type": "input_text",
                         "text": (
                             "Inspect this sprite sheet and return JSON only with these keys: "
-                            "has_exactly_three_views, order_is_front_back_right, same_character_across_views, notes. "
-                            "Use booleans for the first three keys and an array of short strings for notes. "
+                            "has_exactly_three_views, order_is_front_back_right, back_view_has_no_face, side_view_faces_right, same_character_across_views, clothing_colors_are_coherent, notes. "
+                            "Use booleans for the first six keys and an array of short strings for notes. "
                             "Check whether there are exactly three character sprites in a single horizontal row, "
-                            "whether the order is front then back then right-facing side view, "
-                            "and whether all three sprites are the same character with matching proportions."
+                            "whether the order is front then back then a character WALKING TOWARD THE RIGHT, "
+                            "whether the middle sprite is a true back view with no visible face, "
+                            "whether the rightmost sprite unmistakably shows the character WALKING TOWARD THE RIGHT rather than toward the left, mirrored, or directionally ambiguous, "
+                            "whether all three sprites are the same character with matching proportions, "
+                            "and whether the clothing colors and lower-body shading read as coherent garments without accidental anatomy-like artifacts. "
+                            "Be strict: mark side_view_faces_right false for any sprite that does not clearly show the character WALKING TOWARD THE RIGHT. "
+                            "A false positive is worse than a false negative here. "
+                            "If you are not highly confident the rightmost sprite shows the character WALKING TOWARD THE RIGHT, return side_view_faces_right=false. "
+                            "If the face, nose, gaze, chest, feet, stride, or held object orientation points left, return side_view_faces_right=false. "
+                            "If the side view looks mirrored or could be interpreted either way, return side_view_faces_right=false. "
+                            "Do not give the benefit of the doubt to unclear images. "
+                            "Mark clothing_colors_are_coherent false if the pants, skirt, jacket, or shirt contain broken color patches, isolated dark or light streaks, or crotch-area shading that could be misread as exposed anatomy or a protrusion."
                         ),
                     },
                     {
@@ -494,6 +550,7 @@ def _attempt_background_removal(image_bytes: bytes) -> bytes:
     pixels = image.load()
     border_pixels = _sample_border_pixels(image)
     dominant_border_color = _dominant_color(border_pixels)
+    dominant_border_is_white_like = _is_white_like(dominant_border_color)
     visited: set[tuple[int, int]] = set()
     queue: deque[tuple[int, int]] = deque()
 
@@ -519,6 +576,12 @@ def _attempt_background_removal(image_bytes: bytes) -> bytes:
         is_background_like = _is_near_color(rgb, GREEN_SCREEN, tolerance=35) or _is_near_color(
             rgb, dominant_border_color, tolerance=28
         )
+        if (
+            is_background_like
+            and dominant_border_is_white_like
+            and not _is_white_background_pixel(rgb)
+        ):
+            is_background_like = False
 
         if not is_background_like:
             continue
@@ -639,6 +702,35 @@ def _dominant_color(border_pixels: list[tuple[int, int, int, int]]) -> tuple[int
     if not quantized:
         return GREEN_SCREEN
     return Counter(quantized).most_common(1)[0][0]
+
+
+def _is_white_like(rgb: tuple[int, int, int]) -> bool:
+    """Return whether a color behaves like a near-white matte background."""
+
+    return _rgb_brightness(rgb) >= WHITE_BACKGROUND_GUARD_BRIGHTNESS and _rgb_saturation(rgb) <= 32
+
+
+def _is_white_background_pixel(rgb: tuple[int, int, int]) -> bool:
+    """Restrict white-background cleanup to very neutral near-white pixels only."""
+
+    return (
+        _rgb_brightness(rgb) >= WHITE_BACKGROUND_GUARD_BRIGHTNESS
+        and _rgb_saturation(rgb) <= WHITE_BACKGROUND_GUARD_SATURATION
+    )
+
+
+def _rgb_brightness(rgb: tuple[int, int, int]) -> float:
+    """Approximate perceived brightness for matte-background heuristics."""
+
+    red, green, blue = rgb
+    return (red + green + blue) / 3
+
+
+def _rgb_saturation(rgb: tuple[int, int, int]) -> int:
+    """Simple RGB channel spread heuristic for neutral-background detection."""
+
+    red, green, blue = rgb
+    return max(rgb) - min(rgb)
 
 
 def _build_generation_prompt(character_description: str, retry_notes: list[str]) -> str:
@@ -762,7 +854,10 @@ def _parse_json_object(text: str) -> dict[str, Any]:
         return {
             "has_exactly_three_views": False,
             "order_is_front_back_right": False,
+            "back_view_has_no_face": False,
+            "side_view_faces_right": False,
             "same_character_across_views": False,
+            "clothing_colors_are_coherent": False,
             "notes": ["Validator response was not valid JSON."],
         }
 
@@ -772,7 +867,10 @@ def _parse_json_object(text: str) -> dict[str, Any]:
         return {
             "has_exactly_three_views": False,
             "order_is_front_back_right": False,
+            "back_view_has_no_face": False,
+            "side_view_faces_right": False,
             "same_character_across_views": False,
+            "clothing_colors_are_coherent": False,
             "notes": ["Validator response could not be parsed as JSON."],
         }
 
