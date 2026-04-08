@@ -31,7 +31,7 @@ onUnmounted(() => {
 
 <template>
   <main
-    class="grid min-h-screen gap-6 px-4 py-6 md:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)] md:px-8 md:py-8"
+    class="mx-auto grid min-h-screen max-w-[1800px] gap-6 px-4 py-6 md:grid-cols-[minmax(320px,0.72fr)_minmax(0,1.28fr)] md:px-8 md:py-8"
   >
     <section
       class="rounded-[28px] border border-slate-900/8 bg-white/75 p-6 shadow-[0_24px_60px_rgba(31,42,55,0.12)] backdrop-blur md:p-8"
@@ -82,7 +82,7 @@ onUnmounted(() => {
 
       <div
         ref="gameRoot"
-        class="min-h-[320px] overflow-hidden rounded-3xl bg-[linear-gradient(180deg,#21354a,#111927)]"
+        class="min-h-[420px] overflow-hidden rounded-3xl bg-[linear-gradient(180deg,#21354a,#111927)] md:min-h-[680px]"
       ></div>
 
       <div class="mt-4">
