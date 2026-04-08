@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 
 type FacingDirection = 'front' | 'back' | 'left' | 'right';
 
+const BACKDROP_KEY = 'office-map';
+const BACKDROP_PATH = '/maps/background-office-map.png';
 const EXTERNAL_SPRITE_SHEET_KEY = 'office-worker-sheet';
 const EXTERNAL_SPRITE_SHEET_PATH = '/sprites/office-worker-directions.png';
 const SHEET_DIRECTION_ORDER: Array<Exclude<FacingDirection, 'left'>> = ['front', 'back', 'right'];
@@ -26,6 +28,7 @@ class OfficeScene extends Phaser.Scene {
   }
 
   preload() {
+    this.load.image(BACKDROP_KEY, BACKDROP_PATH);
     this.load.image(EXTERNAL_SPRITE_SHEET_KEY, EXTERNAL_SPRITE_SHEET_PATH);
   }
 
@@ -74,45 +77,7 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private createBackdrop() {
-    this.add
-      .rectangle(480, 300, 960, 600, 0x122033)
-      .setStrokeStyle(0, 0x000000, 0);
-
-    const floor = this.add.rectangle(480, 468, 860, 188, 0x1b2d42);
-    floor.setStrokeStyle(4, 0x45617c, 0.8);
-
-    for (let x = CHARACTER_BOUNDS.left; x <= CHARACTER_BOUNDS.right; x += 68) {
-      this.add.line(x, 374, 0, 0, 0, 188, 0x2d4762, 0.42).setOrigin(0, 0);
-    }
-
-    for (let y = CHARACTER_BOUNDS.top + 16; y <= CHARACTER_BOUNDS.bottom; y += 44) {
-      this.add.line(72, y, 0, 0, 816, 0, 0x2d4762, 0.38).setOrigin(0, 0);
-    }
-
-    this.add
-      .text(40, 36, 'Keyboard Movement Test', {
-        color: '#f8f3e7',
-        fontFamily: 'Georgia',
-        fontSize: '30px',
-      })
-      .setShadow(2, 2, '#000000', 4, false, true);
-
-    this.add.text(
-      40,
-      80,
-      'Move with arrow keys. The sprite should face its travel direction and stay idle while inputs are focused.',
-      {
-        color: '#c9d8e8',
-        fontFamily: 'Arial',
-        fontSize: '18px',
-      },
-    );
-
-    this.add.text(40, 108, `Drop your sheet at ${EXTERNAL_SPRITE_SHEET_PATH} to replace the fallback art.`, {
-      color: '#8fb4d8',
-      fontFamily: 'Arial',
-      fontSize: '14px',
-    });
+    this.add.image(480, 300, BACKDROP_KEY).setDisplaySize(960, 600);
 
     this.add
       .rectangle(480, 420, CHARACTER_BOUNDS.width, CHARACTER_BOUNDS.height, 0x000000, 0)
