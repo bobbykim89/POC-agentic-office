@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import type { ApiEvent, DatabaseStatusDto, HealthStatusDto } from '@agentic-office/shared-types';
+import type {
+  AINewsDto,
+  ApiEvent,
+  DatabaseStatusDto,
+  HealthStatusDto,
+} from '@agentic-office/shared-types';
 import { DatabaseService } from './database/database.service';
 
 @Injectable()
@@ -27,5 +32,16 @@ export class AppService {
       },
       createdAt: new Date().toISOString(),
     };
+  }
+
+  async getNewsstandItem(): Promise<AINewsDto> {
+    const aiServiceUrl = process.env.AI_SERVICE_URL ?? 'http://localhost:8001';
+    const response = await fetch(`${aiServiceUrl}/agents/ai-news`);
+
+    if (!response.ok) {
+      throw new Error(`AI service request failed with status ${response.status}.`);
+    }
+
+    return (await response.json()) as AINewsDto;
   }
 }
