@@ -1,6 +1,10 @@
 import Phaser from "phaser";
 
 type FacingDirection = "front" | "back" | "left" | "right";
+type BlockedZone =
+  | Phaser.Geom.Rectangle
+  | Phaser.Geom.Polygon
+  | Phaser.Geom.Ellipse;
 
 const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 800;
@@ -16,16 +20,20 @@ const SHEET_DIRECTION_ORDER: Array<Exclude<FacingDirection, "left">> = [
 const FALLBACK_FRAME_WIDTH = 72;
 const FALLBACK_FRAME_HEIGHT = 108;
 const MOVE_SPEED = 220;
-const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(30, 140, 1200, 650);
+const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(30, 140, 1190, 650);
 const DEBUG_ZONE_FILL_ALPHA = 0.12;
 const DEBUG_ZONE_STROKE_ALPHA = 0.7;
-const BLOCKED_ZONES = [
+const BLOCKED_ZONES: BlockedZone[] = [
   // this is the main meeting room
   new Phaser.Geom.Rectangle(560, 230, 370, 80),
   new Phaser.Geom.Rectangle(550, 230, 30, 195),
   new Phaser.Geom.Rectangle(550, 420, 120, 50),
   new Phaser.Geom.Rectangle(760, 420, 170, 50),
-  // this is the computer rooms
+  new Phaser.Geom.Polygon([1010, 365, 1010, 400, 930, 470, 930, 415]), // bottom angled wall
+  new Phaser.Geom.Polygon([1010, 275, 1010, 345, 930, 310, 930, 230]), // top
+  // table in main meeting room
+  new Phaser.Geom.Rectangle(660, 330, 200, 60),
+  // this is the computer room
   new Phaser.Geom.Rectangle(135, 110, 30, 320),
   new Phaser.Geom.Rectangle(135, 180, 215, 110),
   new Phaser.Geom.Rectangle(135, 330, 250, 60),
@@ -38,8 +46,37 @@ const BLOCKED_ZONES = [
   new Phaser.Geom.Rectangle(1015, 405, 25, 90),
   new Phaser.Geom.Rectangle(1015, 520, 25, 90),
   new Phaser.Geom.Rectangle(1015, 560, 220, 90),
+  // table on elevator room
+  new Phaser.Geom.Rectangle(1080, 490, 110, 40),
+  // this is the windows on the corner
+  new Phaser.Geom.Rectangle(1080, 205, 150, 70),
+  new Phaser.Geom.Rectangle(1000, 110, 30, 100),
+  new Phaser.Geom.Rectangle(1050, 200, 30, 50),
+  // these are the general desks left row
+  new Phaser.Geom.Rectangle(100, 495, 170, 60),
+  new Phaser.Geom.Rectangle(100, 590, 170, 60),
+  new Phaser.Geom.Rectangle(100, 690, 180, 60),
+  // these are the general desks center row
+  new Phaser.Geom.Rectangle(305, 495, 140, 60),
+  new Phaser.Geom.Rectangle(300, 590, 140, 60),
+  new Phaser.Geom.Rectangle(305, 690, 150, 60),
+  // these are the general desks right row
+  new Phaser.Geom.Rectangle(480, 495, 185, 60),
+  new Phaser.Geom.Rectangle(490, 590, 175, 60),
+  // this is the final desk at the right
+  new Phaser.Geom.Rectangle(710, 495, 200, 60),
+  // files on the bottom
+  new Phaser.Geom.Rectangle(485, 690, 50, 60),
+  new Phaser.Geom.Rectangle(560, 690, 50, 60),
+  new Phaser.Geom.Rectangle(625, 690, 50, 60),
+  // bottom walls
+  new Phaser.Geom.Rectangle(30, 745, 650, 20),
+  new Phaser.Geom.Rectangle(1010, 745, 250, 20),
+  // oval tables
+  new Phaser.Geom.Ellipse(1140, 300, 110, 50),
+  new Phaser.Geom.Ellipse(1140, 365, 110, 50),
 ];
-const INITIAL_ACTOR_POSITION = new Phaser.Math.Vector2(640, 560);
+const INITIAL_ACTOR_POSITION = new Phaser.Math.Vector2(710, 460);
 const TARGET_ACTOR_HEIGHT = 108;
 
 class OfficeScene extends Phaser.Scene {
@@ -315,25 +352,52 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private canOccupy(x: number, y: number) {
-    return !BLOCKED_ZONES.some((zone) => zone.contains(x, y));
+    return !BLOCKED_ZONES.some((zone) => this.zoneContains(zone, x, y));
   }
 
   private drawDebugZone(
-    zone: Phaser.Geom.Rectangle,
+    zone: BlockedZone,
     strokeColor: number,
     fillColor: number,
     fillAlpha: number,
   ) {
+    if (zone instanceof Phaser.Geom.Rectangle) {
+      this.add
+        .rectangle(
+          zone.centerX,
+          zone.centerY,
+          zone.width,
+          zone.height,
+          fillColor,
+          fillAlpha,
+        )
+        .setStrokeStyle(3, strokeColor, DEBUG_ZONE_STROKE_ALPHA);
+      return;
+    }
+
+    if (zone instanceof Phaser.Geom.Ellipse) {
+      this.add
+        .ellipse(zone.x, zone.y, zone.width, zone.height, fillColor, fillAlpha)
+        .setStrokeStyle(3, strokeColor, DEBUG_ZONE_STROKE_ALPHA);
+      return;
+    }
+
     this.add
-      .rectangle(
-        zone.centerX,
-        zone.centerY,
-        zone.width,
-        zone.height,
-        fillColor,
-        fillAlpha,
-      )
+      .polygon(0, 0, zone.points, fillColor, fillAlpha)
+      .setOrigin(0, 0)
       .setStrokeStyle(3, strokeColor, DEBUG_ZONE_STROKE_ALPHA);
+  }
+
+  private zoneContains(zone: BlockedZone, x: number, y: number) {
+    if (zone instanceof Phaser.Geom.Rectangle) {
+      return zone.contains(x, y);
+    }
+
+    if (zone instanceof Phaser.Geom.Ellipse) {
+      return zone.contains(x, y);
+    }
+
+    return zone.contains(x, y);
   }
 
   private readMovementInput() {
