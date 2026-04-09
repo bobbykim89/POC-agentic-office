@@ -1,3 +1,4 @@
+import type { AINewsDto } from "@agentic-office/shared-types";
 import Phaser from "phaser";
 
 type FacingDirection = "front" | "back" | "left" | "right";
@@ -10,6 +11,10 @@ type InteractionZone = {
   label: string;
   message: string;
   area: ZoneShape;
+};
+type DialogueContent = {
+  title: string;
+  body: string;
 };
 
 const GAME_WIDTH = 1280;
@@ -29,6 +34,8 @@ const MOVE_SPEED = 220;
 const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(30, 140, 1190, 650);
 const DEBUG_ZONE_FILL_ALPHA = 0.12;
 const DEBUG_ZONE_STROKE_ALPHA = 0.7;
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:3000";
+const DIALOGUE_PAGE_MAX_CHARS = 350;
 const BLOCKED_ZONES: ZoneShape[] = [
   // this is the main meeting room
   new Phaser.Geom.Rectangle(560, 230, 370, 80),
@@ -202,10 +209,19 @@ class OfficeScene extends Phaser.Scene {
   private interactKey!: Phaser.Input.Keyboard.Key;
   private actor!: Phaser.GameObjects.Image;
   private promptText!: Phaser.GameObjects.Text;
-  private interactionMessageText!: Phaser.GameObjects.Text;
+  private dialogueBox!: Phaser.GameObjects.Rectangle;
+  private dialogueTitleText!: Phaser.GameObjects.Text;
+  private dialogueBodyText!: Phaser.GameObjects.Text;
+  private dialogueHintText!: Phaser.GameObjects.Text;
   private facing: FacingDirection = "front";
   private actorVelocity = new Phaser.Math.Vector2(0, 0);
   private activeInteractionZone: InteractionZone | null = null;
+  private dialogueOpen = false;
+  private interactionBusy = false;
+  private dialogueZoneId: string | null = null;
+  private dialoguePages: string[] = [];
+  private dialoguePageIndex = 0;
+  private dialogueHintEnabled = true;
 
   constructor() {
     super("office-scene");
@@ -248,7 +264,7 @@ class OfficeScene extends Phaser.Scene {
       Phaser.Input.Keyboard.KeyCodes.E,
     );
     this.promptText = this.add
-      .text(36, GAME_HEIGHT - 56, "", {
+      .text(36, 34, "", {
         color: "#dff1ff",
         fontFamily: "Avenir Next, sans-serif",
         fontSize: "22px",
@@ -258,20 +274,56 @@ class OfficeScene extends Phaser.Scene {
       })
       .setDepth(20)
       .setVisible(false);
-    this.interactionMessageText = this.add
-      .text(36, 34, "", {
-        color: "#f5fbff",
+    this.dialogueBox = this.add
+      .rectangle(
+        GAME_WIDTH / 2,
+        GAME_HEIGHT - 112,
+        GAME_WIDTH - 48,
+        168,
+        0xf8f9ff,
+        0.96,
+      )
+      .setStrokeStyle(6, 0x2f4f78, 1)
+      .setDepth(30)
+      .setVisible(false);
+    this.dialogueTitleText = this.add
+      .text(52, GAME_HEIGHT - 178, "", {
+        color: "#1f3956",
         fontFamily: "Avenir Next, sans-serif",
-        fontSize: "20px",
-        wordWrap: { width: 520 },
-        backgroundColor: "rgba(20, 32, 46, 0.82)",
-        padding: { x: 14, y: 10 },
+        fontSize: "18px",
+        fontStyle: "bold",
+      })
+      .setDepth(31)
+      .setVisible(false);
+    this.dialogueBodyText = this.add
+      .text(52, GAME_HEIGHT - 148, "", {
+        color: "#213247",
+        fontFamily: "Avenir Next, sans-serif",
+        fontSize: "22px",
+        wordWrap: { width: GAME_WIDTH - 112 },
+        lineSpacing: 8,
+      })
+      .setDepth(31)
+      .setVisible(false);
+    this.dialogueHintText = this.add
+      .text(36, 70, "Press E to close", {
+        color: "#dff1ff",
+        fontFamily: "Avenir Next, sans-serif",
+        fontSize: "18px",
+        fontStyle: "bold",
+        backgroundColor: "rgba(20, 32, 46, 0.78)",
+        padding: { x: 12, y: 8 },
       })
       .setDepth(20)
       .setVisible(false);
   }
 
   update(_: number, delta: number) {
+    if (this.dialogueOpen && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      this.advanceDialogue();
+      return;
+    }
+
     const elapsed = delta / 1000;
     const movement = this.readMovementInput();
 
@@ -553,25 +605,181 @@ class OfficeScene extends Phaser.Scene {
         this.zoneContains(candidate.area, this.actor.x, this.actor.y),
       ) ?? null;
 
+    if (
+      this.dialogueOpen &&
+      this.dialogueZoneId &&
+      zone?.id !== this.dialogueZoneId
+    ) {
+      this.hideDialogue();
+    }
+
     this.activeInteractionZone = zone;
-    this.promptText.setVisible(Boolean(zone));
+    this.promptText.setVisible(
+      Boolean(zone) && !this.dialogueOpen && !this.interactionBusy,
+    );
     this.promptText.setText(zone?.label ?? "");
 
-    if (!zone) {
+    if (!zone || this.dialogueOpen || this.interactionBusy) {
       return;
     }
 
     if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
-      this.interactionMessageText.setText(zone.message);
-      this.interactionMessageText.setVisible(true);
-      this.time.delayedCall(2600, () => {
-        this.interactionMessageText.setVisible(false);
-      });
+      void this.handleInteraction(zone);
     }
   }
 
+  private async handleInteraction(zone: InteractionZone) {
+    this.interactionBusy = true;
+
+    try {
+      if (zone.id === "newstand-panel") {
+        this.showLoadingDialogue(
+          {
+            title: "Newsstand",
+            body: "There should be some interesting news on this newsstand...",
+          },
+          zone.id,
+        );
+
+        const news = await this.fetchAINews();
+        this.showDialogue(
+          {
+            title: `${news.source} | ${news.title}`,
+            body: news.paragraph,
+          },
+          zone.id,
+        );
+        return;
+      }
+
+      this.showDialogue(
+        {
+          title: this.formatInteractionTitle(zone.id),
+          body: zone.message,
+        },
+        zone.id,
+      );
+    } catch (error) {
+      this.showDialogue(
+        {
+          title: "Newsstand",
+          body: "Nothing new or relevant on the news right now.",
+        },
+        zone.id,
+      );
+    } finally {
+      this.interactionBusy = false;
+    }
+  }
+
+  private async fetchAINews(): Promise<AINewsDto> {
+    const response = await fetch(`${BACKEND_URL}/office/newsstand`);
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}.`);
+    }
+
+    return (await response.json()) as AINewsDto;
+  }
+
+  private showDialogue(content: DialogueContent, zoneId?: string) {
+    this.dialogueOpen = true;
+    this.dialogueZoneId = zoneId ?? null;
+    this.dialoguePages = this.paginateDialogue(content.body);
+    this.dialoguePageIndex = 0;
+    this.dialogueHintEnabled = true;
+    this.dialogueTitleText.setText(content.title);
+    this.dialogueBox.setVisible(true);
+    this.dialogueTitleText.setVisible(true);
+    this.dialogueBodyText.setVisible(true);
+    this.promptText.setVisible(false);
+    this.renderDialoguePage();
+  }
+
+  private hideDialogue() {
+    this.dialogueOpen = false;
+    this.dialogueZoneId = null;
+    this.dialoguePages = [];
+    this.dialoguePageIndex = 0;
+    this.dialogueHintEnabled = true;
+    this.dialogueBox.setVisible(false);
+    this.dialogueTitleText.setVisible(false);
+    this.dialogueBodyText.setVisible(false);
+    this.dialogueHintText.setVisible(false);
+  }
+
+  private advanceDialogue() {
+    if (this.dialoguePageIndex < this.dialoguePages.length - 1) {
+      this.dialoguePageIndex += 1;
+      this.renderDialoguePage();
+      return;
+    }
+
+    this.hideDialogue();
+  }
+
+  private renderDialoguePage() {
+    const page = this.dialoguePages[this.dialoguePageIndex] ?? "";
+    this.dialogueBodyText.setText(page);
+
+    if (!this.dialogueHintEnabled) {
+      this.dialogueHintText.setVisible(false);
+      return;
+    }
+
+    this.dialogueHintText.setVisible(true);
+
+    if (
+      this.dialoguePages.length > 1 &&
+      this.dialoguePageIndex < this.dialoguePages.length - 1
+    ) {
+      this.dialogueHintText.setText("Press E for more");
+      return;
+    }
+
+    this.dialogueHintText.setText("Press E to close");
+  }
+
+  private paginateDialogue(body: string) {
+    const normalized = body.replace(/\s+/g, " ").trim();
+    if (normalized.length <= DIALOGUE_PAGE_MAX_CHARS) {
+      return [normalized];
+    }
+
+    const pages: string[] = [];
+    let remaining = normalized;
+
+    while (remaining.length > DIALOGUE_PAGE_MAX_CHARS) {
+      let splitAt = remaining.lastIndexOf(" ", DIALOGUE_PAGE_MAX_CHARS);
+      if (splitAt <= 0) {
+        splitAt = DIALOGUE_PAGE_MAX_CHARS;
+      }
+
+      pages.push(remaining.slice(0, splitAt).trim());
+      remaining = remaining.slice(splitAt).trim();
+    }
+
+    if (remaining.length > 0) {
+      pages.push(remaining);
+    }
+
+    return pages;
+  }
+
+  private showLoadingDialogue(content: DialogueContent, zoneId?: string) {
+    this.showDialogue(content, zoneId);
+    this.dialogueHintEnabled = false;
+    this.dialogueHintText.setVisible(false);
+  }
+
+  private formatInteractionTitle(id: string) {
+    return id
+      .split("-")
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  }
+
   private readMovementInput() {
-    if (this.isEditableElementFocused()) {
+    if (this.interactionBusy || this.isEditableElementFocused()) {
       return new Phaser.Math.Vector2(0, 0);
     }
 
