@@ -1,10 +1,16 @@
 import Phaser from "phaser";
 
 type FacingDirection = "front" | "back" | "left" | "right";
-type BlockedZone =
+type ZoneShape =
   | Phaser.Geom.Rectangle
   | Phaser.Geom.Polygon
   | Phaser.Geom.Ellipse;
+type InteractionZone = {
+  id: string;
+  label: string;
+  message: string;
+  area: ZoneShape;
+};
 
 const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 800;
@@ -23,7 +29,7 @@ const MOVE_SPEED = 220;
 const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(30, 140, 1190, 650);
 const DEBUG_ZONE_FILL_ALPHA = 0.12;
 const DEBUG_ZONE_STROKE_ALPHA = 0.7;
-const BLOCKED_ZONES: BlockedZone[] = [
+const BLOCKED_ZONES: ZoneShape[] = [
   // this is the main meeting room
   new Phaser.Geom.Rectangle(560, 230, 370, 80),
   new Phaser.Geom.Rectangle(550, 230, 30, 195),
@@ -76,6 +82,113 @@ const BLOCKED_ZONES: BlockedZone[] = [
   new Phaser.Geom.Ellipse(1140, 300, 110, 50),
   new Phaser.Geom.Ellipse(1140, 365, 110, 50),
 ];
+const INTERACTION_ZONES: InteractionZone[] = [
+  {
+    id: "newstand-panel",
+    label: "Press E to browse newspapers",
+    message:
+      "You browse. through the news. This could later open something else...",
+    area: new Phaser.Geom.Rectangle(1020, 570, 60, 100),
+  },
+  {
+    id: "elevators",
+    label: "Press E to check elevators",
+    message: "ding!",
+    area: new Phaser.Geom.Rectangle(1090, 570, 120, 100),
+  },
+  {
+    id: "small-meeting-room-boards",
+    label: "Press E to check wall",
+    message: "some pretty decoration makes the meeting room cozy.",
+    area: new Phaser.Geom.Rectangle(1060, 420, 130, 60),
+  },
+  {
+    id: "meeting-room-whiteboard",
+    label: "Press E to check whiteboard",
+    message:
+      "To-do list: 1. Finish frontend office prototype. 2. Add teammate NPC interactions. 3. Hook the newsstand to live AI news.",
+    area: new Phaser.Geom.Rectangle(790, 250, 140, 70),
+  },
+  {
+    id: "meeting-room-tv",
+    label: "Press E to check tv and blackboard",
+    message: "Some meeting just finished. I wonder what the summary was...",
+    area: new Phaser.Geom.Rectangle(640, 250, 140, 70),
+  },
+  {
+    id: "meeting-room-table",
+    label: "Press E to check table",
+    message: "Maybe I should join a meeting here.",
+    area: new Phaser.Geom.Rectangle(650, 320, 220, 80),
+  },
+  {
+    id: "outside-view-top",
+    label: "Press E to check view",
+    message: "Woah! The Phoenix skyline is so beautiful!",
+    area: new Phaser.Geom.Rectangle(1010, 60, 220, 90),
+  },
+  {
+    id: "outside-view-right",
+    label: "Press E to check view",
+    message: "Woah! The Phoenix skyline is so beautiful!",
+    area: new Phaser.Geom.Rectangle(1210, 60, 40, 200),
+  },
+  {
+    id: "vending-machine",
+    label: "Press E to check vending machine",
+    message:
+      "The vending machine has a wide assortment of delicious beverages and snacks...",
+    area: new Phaser.Geom.Rectangle(820, 50, 45, 90),
+  },
+  {
+    id: "coffee-maker",
+    label: "Press E to check coffee maker",
+    message: "The coffee brewing smells so delicious...",
+    area: new Phaser.Geom.Rectangle(760, 50, 45, 90),
+  },
+  {
+    id: "video-room",
+    label: "Press E to check video table",
+    message: "Lots of modern cameras and tech...",
+    area: new Phaser.Geom.Rectangle(450, 100, 60, 60),
+  },
+  {
+    id: "x-lab-left",
+    label: "Press E to check x-lab computers",
+    message: "Some fun looking games are being developed...",
+    area: new Phaser.Geom.Rectangle(170, 100, 95, 50),
+  },
+  {
+    id: "x-lab-right",
+    label: "Press E to check x-lab computers",
+    message: "Some fun looking games are being developed...",
+    area: new Phaser.Geom.Rectangle(290, 100, 95, 50),
+  },
+  {
+    id: "main-computers-top",
+    label: "Press E to check main computers",
+    message: "Some really big screens! I could do my work here.",
+    area: new Phaser.Geom.Rectangle(170, 220, 180, 80),
+  },
+  {
+    id: "main-computers-bottom",
+    label: "Press E to check main computers",
+    message: "Some really big screens! I could do my work here.",
+    area: new Phaser.Geom.Rectangle(160, 330, 220, 70),
+  },
+  {
+    id: "wall-art-hallway",
+    label: "Press E to check art",
+    message: "Such pretty art!",
+    area: new Phaser.Geom.Rectangle(190, 430, 165, 55),
+  },
+  {
+    id: "file-cabinets",
+    label: "Press E to check filing cabinets",
+    message: "Some realy interesting documents are hidden here.",
+    area: new Phaser.Geom.Rectangle(490, 680, 190, 70),
+  },
+];
 const INITIAL_ACTOR_POSITION = new Phaser.Math.Vector2(710, 460);
 const TARGET_ACTOR_HEIGHT = 108;
 
@@ -86,9 +199,13 @@ class OfficeScene extends Phaser.Scene {
     left: Phaser.Input.Keyboard.Key;
     right: Phaser.Input.Keyboard.Key;
   };
+  private interactKey!: Phaser.Input.Keyboard.Key;
   private actor!: Phaser.GameObjects.Image;
+  private promptText!: Phaser.GameObjects.Text;
+  private interactionMessageText!: Phaser.GameObjects.Text;
   private facing: FacingDirection = "front";
   private actorVelocity = new Phaser.Math.Vector2(0, 0);
+  private activeInteractionZone: InteractionZone | null = null;
 
   constructor() {
     super("office-scene");
@@ -127,6 +244,31 @@ class OfficeScene extends Phaser.Scene {
       left: Phaser.Input.Keyboard.KeyCodes.LEFT,
       right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
     }) as OfficeScene["arrowKeys"];
+    this.interactKey = this.input.keyboard!.addKey(
+      Phaser.Input.Keyboard.KeyCodes.E,
+    );
+    this.promptText = this.add
+      .text(36, GAME_HEIGHT - 56, "", {
+        color: "#dff1ff",
+        fontFamily: "Avenir Next, sans-serif",
+        fontSize: "22px",
+        fontStyle: "bold",
+        backgroundColor: "rgba(20, 32, 46, 0.78)",
+        padding: { x: 12, y: 8 },
+      })
+      .setDepth(20)
+      .setVisible(false);
+    this.interactionMessageText = this.add
+      .text(36, 34, "", {
+        color: "#f5fbff",
+        fontFamily: "Avenir Next, sans-serif",
+        fontSize: "20px",
+        wordWrap: { width: 520 },
+        backgroundColor: "rgba(20, 32, 46, 0.82)",
+        padding: { x: 14, y: 10 },
+      })
+      .setDepth(20)
+      .setVisible(false);
   }
 
   update(_: number, delta: number) {
@@ -139,6 +281,8 @@ class OfficeScene extends Phaser.Scene {
       this.moveActor(this.actorVelocity.x, this.actorVelocity.y);
       this.updateFacingFromVelocity(movement);
     }
+
+    this.updateInteractionState();
   }
 
   private createBackdrop() {
@@ -149,6 +293,9 @@ class OfficeScene extends Phaser.Scene {
     this.drawDebugZone(CHARACTER_BOUNDS, 0x86a4bf, 0x000000, 0);
     BLOCKED_ZONES.forEach((zone) => {
       this.drawDebugZone(zone, 0x86a4bf, 0x86a4bf, DEBUG_ZONE_FILL_ALPHA);
+    });
+    INTERACTION_ZONES.forEach((zone) => {
+      this.drawDebugZone(zone.area, 0x6dd3ff, 0x6dd3ff, DEBUG_ZONE_FILL_ALPHA);
     });
   }
 
@@ -356,7 +503,7 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private drawDebugZone(
-    zone: BlockedZone,
+    zone: ZoneShape,
     strokeColor: number,
     fillColor: number,
     fillAlpha: number,
@@ -388,7 +535,7 @@ class OfficeScene extends Phaser.Scene {
       .setStrokeStyle(3, strokeColor, DEBUG_ZONE_STROKE_ALPHA);
   }
 
-  private zoneContains(zone: BlockedZone, x: number, y: number) {
+  private zoneContains(zone: ZoneShape, x: number, y: number) {
     if (zone instanceof Phaser.Geom.Rectangle) {
       return zone.contains(x, y);
     }
@@ -398,6 +545,29 @@ class OfficeScene extends Phaser.Scene {
     }
 
     return zone.contains(x, y);
+  }
+
+  private updateInteractionState() {
+    const zone =
+      INTERACTION_ZONES.find((candidate) =>
+        this.zoneContains(candidate.area, this.actor.x, this.actor.y),
+      ) ?? null;
+
+    this.activeInteractionZone = zone;
+    this.promptText.setVisible(Boolean(zone));
+    this.promptText.setText(zone?.label ?? "");
+
+    if (!zone) {
+      return;
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.interactKey)) {
+      this.interactionMessageText.setText(zone.message);
+      this.interactionMessageText.setVisible(true);
+      this.time.delayedCall(2600, () => {
+        this.interactionMessageText.setVisible(false);
+      });
+    }
   }
 
   private readMovementInput() {
