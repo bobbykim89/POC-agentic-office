@@ -16,6 +16,7 @@ There is no local `app/agents` implementation in the current version.
 - `POST /prompt`: placeholder prompt endpoint
 - `POST /agents/linkedin-post`: sends short input to OpenAI and returns a concise silly LinkedIn-style post
 - `POST /agents/sprite-sheet`: accepts either a description or an uploaded image, generates a sprite sheet, validates it, retries up to 3 times, and saves the final PNG locally
+- If Cloudinary credentials are configured, generated sprite sheets are also uploaded to Cloudinary and the response includes hosted asset metadata
 - `GET /agents/ai-news`: fetches a recent AI-related news item, picks one at random, and summarizes it in plain language
 
 Example request:
@@ -53,9 +54,14 @@ OPENAI_IMAGE_STYLE=natural
 SPRITE_OUTPUT_DIR=generated/sprites
 FINAL_SPRITE_HEIGHT=256
 AI_NEWS_QUERY=AI OR artificial intelligence OR OpenAI OR Anthropic OR Gemini
+CLOUDINARY_CLOUD_NAME=your_cloud_name_here
+CLOUDINARY_API_KEY=your_api_key_here
+CLOUDINARY_API_SECRET=your_api_secret_here
+CLOUDINARY_SPRITE_FOLDER=agentic-office/sprites
 ```
 
 `FINAL_SPRITE_HEIGHT` defaults to `256`. The pipeline rescales the final PNG to that height while preserving aspect ratio.
+If the `CLOUDINARY_*` vars are set, the sprite response includes `storage_record.cloudinary.secure_url`.
 
 ## Run locally
 
@@ -96,4 +102,4 @@ curl -X POST http://localhost:8001/agents/sprite-sheet \
 
 Run on the main project folder.
 
-The generated sprite sheet is saved locally under `apps/ai-service/generated/sprites` by default. The response also includes a storage record placeholder for a future database integration.
+The generated sprite sheet is saved locally under `apps/ai-service/generated/sprites` by default. When Cloudinary is configured, the same response also includes hosted asset metadata and a URL you can use directly in the frontend.
