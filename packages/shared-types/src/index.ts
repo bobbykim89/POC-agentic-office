@@ -18,6 +18,15 @@ export interface DatabaseStatusDto {
   urlConfigured: boolean;
 }
 
+export interface AINewsDto {
+  title: string;
+  source: string;
+  published_at: string;
+  article_url: string;
+  paragraph: string;
+  model: string;
+}
+
 export interface PromptDto {
   prompt: string;
 }
