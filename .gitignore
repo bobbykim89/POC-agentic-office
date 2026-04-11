@@ -3,6 +3,7 @@ node_modules
 dist
 coverage
 .pnpm-store
+*.tsbuildinfo
 
 apps/ai-service/.venv
 apps/ai-service/.env
