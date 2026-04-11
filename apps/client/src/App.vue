@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue';
-import { createOfficeGame, type OfficeGameInstance } from './game/createOfficeGame';
+import {
+  createOfficeGame,
+  showOfficeDialogue,
+  type OfficeGameInstance,
+} from './game/createOfficeGame';
+import LinkedInPostTerminal from './components/LinkedInPostTerminal.vue';
 import RealtimeChatBox from './components/RealtimeChatBox.vue';
-import type { ApiEvent } from '@agentic-office/shared-types';
+import WeeklyReportTerminal from './components/WeeklyReportTerminal.vue';
+import type { ApiEvent, LinkedInPostDto } from '@agentic-office/shared-types';
 
 const gameRoot = ref<HTMLDivElement | null>(null);
+const linkedInPostTerminalOpen = ref(false);
+const weeklyReportTerminalOpen = ref(false);
 let game: OfficeGameInstance | null = null;
 
 const featuredEvent: ApiEvent = {
@@ -21,12 +29,29 @@ onMounted(() => {
     return;
   }
 
-  game = createOfficeGame(gameRoot.value);
+  game = createOfficeGame(gameRoot.value, {
+    onOpenLinkedInPostTerminal: () => {
+      linkedInPostTerminalOpen.value = true;
+    },
+    onOpenWeeklyReportTerminal: () => {
+      weeklyReportTerminalOpen.value = true;
+    },
+    isUiLocked: () =>
+      linkedInPostTerminalOpen.value || weeklyReportTerminalOpen.value,
+  });
 });
 
 onUnmounted(() => {
   game?.destroy(true);
 });
+
+function handleLinkedInPostComplete(result: LinkedInPostDto) {
+  linkedInPostTerminalOpen.value = false;
+  showOfficeDialogue(game, {
+    title: 'LinkedIn Post Generator',
+    body: result.post,
+  });
+}
 </script>
 
 <template>
@@ -81,9 +106,19 @@ onUnmounted(() => {
       </div>
 
       <div
-        ref="gameRoot"
-        class="min-h-[420px] overflow-hidden rounded-3xl bg-[linear-gradient(180deg,#21354a,#111927)] md:min-h-[680px]"
-      ></div>
+        class="relative min-h-[420px] overflow-hidden rounded-3xl bg-[linear-gradient(180deg,#21354a,#111927)] md:min-h-[680px]"
+      >
+        <div ref="gameRoot" class="h-full min-h-[420px] md:min-h-[680px]"></div>
+        <LinkedInPostTerminal
+          :is-open="linkedInPostTerminalOpen"
+          @close="linkedInPostTerminalOpen = false"
+          @complete="handleLinkedInPostComplete"
+        />
+        <WeeklyReportTerminal
+          :is-open="weeklyReportTerminalOpen"
+          @close="weeklyReportTerminalOpen = false"
+        />
+      </div>
 
       <div class="mt-4">
         <RealtimeChatBox />

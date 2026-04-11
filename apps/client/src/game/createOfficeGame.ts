@@ -16,6 +16,12 @@ type DialogueContent = {
   title: string;
   body: string;
 };
+export type OfficeDialogueContent = DialogueContent;
+export type OfficeGameCallbacks = {
+  onOpenLinkedInPostTerminal?: () => void;
+  onOpenWeeklyReportTerminal?: () => void;
+  isUiLocked?: () => boolean;
+};
 
 const GAME_WIDTH = 1280;
 const GAME_HEIGHT = 800;
@@ -35,7 +41,7 @@ const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(30, 140, 1190, 650);
 const DEBUG_ZONE_FILL_ALPHA = 0.12;
 const DEBUG_ZONE_STROKE_ALPHA = 0.7;
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:3000";
-const DIALOGUE_PAGE_MAX_CHARS = 350;
+const DIALOGUE_PAGE_MAX_CHARS = 345;
 const BLOCKED_ZONES: ZoneShape[] = [
   // this is the main meeting room
   new Phaser.Geom.Rectangle(560, 230, 370, 80),
@@ -173,14 +179,14 @@ const INTERACTION_ZONES: InteractionZone[] = [
   },
   {
     id: "main-computers-top",
-    label: "Press E to check main computers",
-    message: "Some really big screens! I could do my work here.",
+    label: "Press E to write on Linkedin",
+    message: "A polished post generator is ready on this workstation.",
     area: new Phaser.Geom.Rectangle(170, 220, 180, 80),
   },
   {
     id: "main-computers-bottom",
-    label: "Press E to check main computers",
-    message: "Some really big screens! I could do my work here.",
+    label: "Press E to write a 515",
+    message: "This setup looks perfect for drafting a weekly 515.",
     area: new Phaser.Geom.Rectangle(160, 330, 220, 70),
   },
   {
@@ -200,6 +206,20 @@ const INITIAL_ACTOR_POSITION = new Phaser.Math.Vector2(710, 460);
 const TARGET_ACTOR_HEIGHT = 108;
 
 class OfficeScene extends Phaser.Scene {
+  private readonly callbacks: OfficeGameCallbacks;
+  private readonly handleWindowArrowScrollLock = (event: KeyboardEvent) => {
+    const isArrowKey =
+      event.key === "ArrowUp" ||
+      event.key === "ArrowDown" ||
+      event.key === "ArrowLeft" ||
+      event.key === "ArrowRight";
+
+    if (!isArrowKey || this.isEditableElementFocused()) {
+      return;
+    }
+
+    event.preventDefault();
+  };
   private arrowKeys!: {
     up: Phaser.Input.Keyboard.Key;
     down: Phaser.Input.Keyboard.Key;
@@ -223,8 +243,9 @@ class OfficeScene extends Phaser.Scene {
   private dialoguePageIndex = 0;
   private dialogueHintEnabled = true;
 
-  constructor() {
+  constructor(callbacks: OfficeGameCallbacks = {}) {
     super("office-scene");
+    this.callbacks = callbacks;
   }
 
   preload() {
@@ -254,15 +275,50 @@ class OfficeScene extends Phaser.Scene {
     this.actor.setScale(TARGET_ACTOR_HEIGHT / actorSource.height);
 
     this.input.keyboard?.disableGlobalCapture();
-    this.arrowKeys = this.input.keyboard!.addKeys({
-      up: Phaser.Input.Keyboard.KeyCodes.UP,
-      down: Phaser.Input.Keyboard.KeyCodes.DOWN,
-      left: Phaser.Input.Keyboard.KeyCodes.LEFT,
-      right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
-    }) as OfficeScene["arrowKeys"];
+    this.arrowKeys = this.input.keyboard!.addKeys(
+      {
+        up: Phaser.Input.Keyboard.KeyCodes.UP,
+        down: Phaser.Input.Keyboard.KeyCodes.DOWN,
+        left: Phaser.Input.Keyboard.KeyCodes.LEFT,
+        right: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      },
+      false,
+    ) as OfficeScene["arrowKeys"];
     this.interactKey = this.input.keyboard!.addKey(
       Phaser.Input.Keyboard.KeyCodes.E,
+      false,
     );
+    window.addEventListener("keydown", this.handleWindowArrowScrollLock, {
+      passive: false,
+    });
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener("keydown", this.handleWindowArrowScrollLock);
+    });
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => {
+      window.removeEventListener("keydown", this.handleWindowArrowScrollLock);
+    });
+    this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
+      const isArrowKey =
+        event.key === "ArrowUp" ||
+        event.key === "ArrowDown" ||
+        event.key === "ArrowLeft" ||
+        event.key === "ArrowRight";
+
+      if (!isArrowKey) {
+        return;
+      }
+
+      if (this.isEditableElementFocused()) {
+        return;
+      }
+
+      if (this.callbacks.isUiLocked?.()) {
+        event.preventDefault();
+        return;
+      }
+
+      event.preventDefault();
+    });
     this.promptText = this.add
       .text(36, 34, "", {
         color: "#dff1ff",
@@ -277,9 +333,9 @@ class OfficeScene extends Phaser.Scene {
     this.dialogueBox = this.add
       .rectangle(
         GAME_WIDTH / 2,
-        GAME_HEIGHT - 112,
+        GAME_HEIGHT - 109.5,
         GAME_WIDTH - 48,
-        168,
+        173,
         0xf8f9ff,
         0.96,
       )
@@ -600,6 +656,12 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private updateInteractionState() {
+    if (this.callbacks.isUiLocked?.()) {
+      this.activeInteractionZone = null;
+      this.promptText.setVisible(false);
+      return;
+    }
+
     const zone =
       INTERACTION_ZONES.find((candidate) =>
         this.zoneContains(candidate.area, this.actor.x, this.actor.y),
@@ -652,6 +714,38 @@ class OfficeScene extends Phaser.Scene {
         return;
       }
 
+      if (zone.id === "main-computers-top") {
+        if (!this.callbacks.onOpenLinkedInPostTerminal) {
+          this.showDialogue(
+            {
+              title: "LinkedIn Post Generator",
+              body: zone.message,
+            },
+            zone.id,
+          );
+          return;
+        }
+
+        this.callbacks.onOpenLinkedInPostTerminal();
+        return;
+      }
+
+      if (zone.id === "main-computers-bottom") {
+        if (!this.callbacks.onOpenWeeklyReportTerminal) {
+          this.showDialogue(
+            {
+              title: "515 Generator",
+              body: zone.message,
+            },
+            zone.id,
+          );
+          return;
+        }
+
+        this.callbacks.onOpenWeeklyReportTerminal();
+        return;
+      }
+
       this.showDialogue(
         {
           title: this.formatInteractionTitle(zone.id),
@@ -660,10 +754,21 @@ class OfficeScene extends Phaser.Scene {
         zone.id,
       );
     } catch (error) {
+      const title =
+        zone.id === "main-computers-top"
+          ? "LinkedIn Post Generator"
+          : zone.id === "main-computers-bottom"
+            ? "515 Generator"
+            : "Newsstand";
+      const body =
+        error instanceof Error
+          ? error.message
+          : "The office agent hit an unexpected error.";
+
       this.showDialogue(
         {
-          title: "Newsstand",
-          body: "Nothing new or relevant on the news right now.",
+          title,
+          body,
         },
         zone.id,
       );
@@ -673,14 +778,30 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private async fetchAINews(): Promise<AINewsDto> {
-    const response = await fetch(`${BACKEND_URL}/office/newsstand`);
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}.`);
-    }
-
-    return (await response.json()) as AINewsDto;
+    return this.fetchJson<AINewsDto>(`${BACKEND_URL}/office/newsstand`);
   }
 
+  private async fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(url, init);
+    if (!response.ok) {
+      throw new Error(await this.extractErrorMessage(response));
+    }
+
+    return (await response.json()) as T;
+  }
+
+  private async extractErrorMessage(response: Response) {
+    try {
+      const payload = (await response.json()) as { message?: string };
+      if (payload.message) {
+        return payload.message;
+      }
+    } catch {
+      // Fall through to the status-based default message.
+    }
+
+    return `Request failed with status ${response.status}.`;
+  }
   private showDialogue(content: DialogueContent, zoneId?: string) {
     this.dialogueOpen = true;
     this.dialogueZoneId = zoneId ?? null;
@@ -693,6 +814,10 @@ class OfficeScene extends Phaser.Scene {
     this.dialogueBodyText.setVisible(true);
     this.promptText.setVisible(false);
     this.renderDialoguePage();
+  }
+
+  public presentExternalDialogue(content: DialogueContent) {
+    this.showDialogue(content);
   }
 
   private hideDialogue() {
@@ -779,7 +904,11 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private readMovementInput() {
-    if (this.interactionBusy || this.isEditableElementFocused()) {
+    if (
+      this.interactionBusy ||
+      this.callbacks.isUiLocked?.() ||
+      this.isEditableElementFocused()
+    ) {
       return new Phaser.Math.Vector2(0, 0);
     }
 
@@ -834,7 +963,24 @@ class OfficeScene extends Phaser.Scene {
 
 export type OfficeGameInstance = Phaser.Game;
 
-export function createOfficeGame(parent: HTMLElement): OfficeGameInstance {
+export function showOfficeDialogue(
+  game: OfficeGameInstance | null,
+  content: OfficeDialogueContent,
+) {
+  if (!game) {
+    return;
+  }
+
+  const scene = game.scene.getScene("office-scene");
+  if (scene instanceof OfficeScene) {
+    scene.presentExternalDialogue(content);
+  }
+}
+
+export function createOfficeGame(
+  parent: HTMLElement,
+  callbacks: OfficeGameCallbacks = {},
+): OfficeGameInstance {
   return new Phaser.Game({
     type: Phaser.AUTO,
     width: GAME_WIDTH,
@@ -845,6 +991,6 @@ export function createOfficeGame(parent: HTMLElement): OfficeGameInstance {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
-    scene: [OfficeScene],
+    scene: [new OfficeScene(callbacks)],
   });
 }
