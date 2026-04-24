@@ -116,6 +116,11 @@ watch(
   },
 )
 
+async function handleLogout() {
+  await authStore.logout()
+  await router.replace({ name: 'login' })
+}
+
 function readSingleQueryParam(value: unknown) {
   if (typeof value === 'string') {
     return value
@@ -153,7 +158,7 @@ function readSingleQueryParam(value: unknown) {
         <button
           type="button"
           class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-700"
-          @click="authStore.logout()"
+          @click="handleLogout"
         >
           Logout
         </button>
