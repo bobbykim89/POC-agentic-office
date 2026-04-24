@@ -4,6 +4,7 @@ dist
 coverage
 .pnpm-store
 *.tsbuildinfo
+.env
 
 apps/ai-service/.venv
 apps/ai-service/.env

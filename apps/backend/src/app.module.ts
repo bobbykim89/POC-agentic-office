@@ -1,12 +1,27 @@
 import { Module } from '@nestjs/common';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
-import { RealtimeGateway } from './realtime/realtime.gateway';
+import { AgentBridgeModule } from './modules/agent-bridge/agent-bridge.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { ChatModule } from './modules/chat/chat.module';
+import { HealthModule } from './modules/health/health.module';
+import { LogsModule } from './modules/logs/logs.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
+import { RoomsModule } from './modules/rooms/rooms.module';
+import { MicrosoftIntegrationsModule } from './modules/integrations/microsoft/microsoft-integrations.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
-  imports: [DatabaseModule],
-  controllers: [AppController],
-  providers: [AppService, RealtimeGateway],
+  imports: [
+    DatabaseModule,
+    HealthModule,
+    AuthModule,
+    UsersModule,
+    RoomsModule,
+    ChatModule,
+    RealtimeModule,
+    AgentBridgeModule,
+    MicrosoftIntegrationsModule,
+    LogsModule,
+  ],
 })
 export class AppModule {}

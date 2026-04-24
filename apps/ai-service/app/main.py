@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.services import (
     WeeklyReportMessage,
     draft_weekly_report,
+    draft_weekly_report_from_context,
     finish_microsoft_auth,
     generate_character_sprite_sheet,
     generate_linkedin_post_with_openai,
@@ -118,6 +119,16 @@ class WeeklyReportDraftRequest(BaseModel):
     weekly_summary: str = Field(min_length=1, max_length=3000)
     query: str | None = None
     max_examples: int = Field(default=4, ge=1, le=10)
+    recipient_override: str | None = None
+    subject_override: str | None = None
+
+
+class WeeklyReportDraftFromContextRequest(BaseModel):
+    account_email: str
+    weekly_summary: str = Field(min_length=1, max_length=3000)
+    query: str | None = None
+    source_examples: list[WeeklyReportMessageResponse] = Field(default_factory=list)
+    last_week_email: WeeklyReportMessageResponse | None = None
     recipient_override: str | None = None
     subject_override: str | None = None
 
@@ -430,6 +441,74 @@ def create_weekly_report_draft(
         body_html=result.body_html,
         model=result.model,
         source_examples=[_weekly_report_message_to_response(message) for message in result.source_examples],
+        last_week_email=(
+            _weekly_report_message_to_response(result.last_week_email)
+            if result.last_week_email
+            else None
+        ),
+    )
+
+
+@app.post(
+    "/agents/weekly-report/draft-from-context",
+    response_model=WeeklyReportDraftResponse,
+)
+def create_weekly_report_draft_from_context(
+    payload: WeeklyReportDraftFromContextRequest,
+) -> WeeklyReportDraftResponse:
+    """Draft a weekly 515 email from caller-provided Outlook examples."""
+
+    try:
+        result = draft_weekly_report_from_context(
+            account_email=payload.account_email,
+            weekly_summary=payload.weekly_summary,
+            source_examples=[
+                WeeklyReportMessage(
+                    message_id=message.message_id,
+                    thread_id=message.thread_id,
+                    subject=message.subject,
+                    sent_at=message.sent_at,
+                    to=message.to,
+                    cc=message.cc,
+                    snippet=message.snippet,
+                    body_text=message.body_text,
+                    body_html=message.body_html,
+                )
+                for message in payload.source_examples
+            ],
+            last_week_email=(
+                WeeklyReportMessage(
+                    message_id=payload.last_week_email.message_id,
+                    thread_id=payload.last_week_email.thread_id,
+                    subject=payload.last_week_email.subject,
+                    sent_at=payload.last_week_email.sent_at,
+                    to=payload.last_week_email.to,
+                    cc=payload.last_week_email.cc,
+                    snippet=payload.last_week_email.snippet,
+                    body_text=payload.last_week_email.body_text,
+                    body_html=payload.last_week_email.body_html,
+                )
+                if payload.last_week_email
+                else None
+            ),
+            recipient_override=payload.recipient_override,
+            subject_override=payload.subject_override,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Weekly report draft failed: {exc}") from exc
+
+    return WeeklyReportDraftResponse(
+        account_email=result.account_email,
+        recipient=result.recipient,
+        subject=result.subject,
+        body=result.body,
+        body_html=result.body_html,
+        model=result.model,
+        source_examples=[
+            _weekly_report_message_to_response(message) for message in result.source_examples
+        ],
         last_week_email=(
             _weekly_report_message_to_response(result.last_week_email)
             if result.last_week_email

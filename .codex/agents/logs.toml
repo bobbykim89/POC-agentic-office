@@ -1,0 +1,24 @@
+name = "logs"
+description = "Defines log, audit, and historical state persistence."
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Archive", "Trace", "Memo"]
+developer_instructions = """
+Implement persistence and retrieval for logs and state history.
+
+Requirements:
+- Store agent request/response logs.
+- Store chat history.
+- Store user spriteSheetUrl.
+- Store current presence and current coordinates.
+- Store optional coordinate history if needed for analysis.
+- Store audit logs for important user actions.
+
+Deliverables:
+- Log schema recommendations.
+- Service methods for creating and querying logs.
+- Minimal admin/debug retrieval endpoints if needed.
+- Clear separation between live state and persistent history.
+- Tests for save/retrieve behavior.
+"""

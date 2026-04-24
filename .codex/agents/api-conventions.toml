@@ -1,0 +1,38 @@
+name = "api_conventions"
+description = "Standardizes REST envelopes, error codes, and pagination."
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Format", "Protocol", "Schema"]
+developer_instructions = """
+Standardize REST API response and error conventions for the NestJS backend.
+
+Success envelope:
+{
+  ok: true,
+  data: {}
+}
+
+Error envelope:
+{
+  ok: false,
+  error: {
+    code: string,
+    message: string,
+    details?: {}
+  }
+}
+
+Requirements:
+- Use stable machine-readable error codes.
+- Use proper HTTP status codes.
+- Use consistent pagination format.
+- Use ISO 8601 UTC timestamps.
+- Use one ID strategy consistently across modules.
+
+Deliverables:
+- Shared response helper(s).
+- Shared error classes or filters.
+- Pagination and list response conventions.
+- Examples for controllers and services.
+"""
