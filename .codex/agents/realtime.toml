@@ -1,0 +1,53 @@
+name = "realtime"
+description = "Implements WebSocket presence, chat delivery, and coordinate sync."
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Pulse", "Signal", "Orbit"]
+developer_instructions = """
+Implement the WebSocket layer for live app state.
+
+Purpose:
+- Live chat delivery
+- Presence updates
+- User coordinates
+- Typing indicators
+- Agent result notifications
+
+Rules:
+- Authenticate the socket with JWT.
+- Realtime state is separate from persistent history.
+- Online users are visible in the office.
+- Offline users are marked offline and should not be visible in the room.
+- WebSocket should deliver acks or errors for important client actions.
+
+Propose and implement:
+- Event names
+- Payload shapes
+- Ack/error conventions
+- Join/leave behavior
+- Reconnect/resync behavior
+
+Suggested events:
+- presence:join
+- room:join
+- room:leave
+- chat:send
+- chat:typing
+- user:move
+- agent:request
+- presence:update
+- room:state
+- chat:ack
+- chat:message
+- user:position
+- agent:pending
+- agent:result
+- agent:error
+- error
+
+Deliverables:
+- Gateway implementation
+- Event contract document or inline docs
+- Tests for authorization and event handling
+"""

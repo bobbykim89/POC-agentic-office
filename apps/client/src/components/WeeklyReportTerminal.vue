@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type {
-  ConnectedMicrosoftAccountDto,
   WeeklyReportDraftDto,
   WeeklyReportHistoryDto,
   WeeklyReportReviseRequestDto,
@@ -10,6 +9,22 @@ import type {
   WeeklyReportSendDto,
   WeeklyReportSendRequestDto,
 } from '@agentic-office/shared-types';
+import { apiRequest } from '../lib/api-client';
+
+interface MicrosoftIntegrationAccount {
+  id: string;
+  provider: 'microsoft';
+  accountEmail: string;
+  connectedAt: string;
+  scopes: string[];
+  tokenExpiresAt: string | null;
+}
+
+interface MicrosoftOauthStartResponse {
+  authorizationUrl: string;
+  state: string;
+  expiresAt: string;
+}
 
 type TerminalStep = 'compose' | 'review' | 'decision' | 'complete';
 
@@ -21,11 +36,10 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
 const ACCOUNT_STORAGE_KEY = 'agentic-office.weekly-report.account-email';
 
 const step = ref<TerminalStep>('compose');
-const accounts = ref<ConnectedMicrosoftAccountDto[]>([]);
+const accounts = ref<MicrosoftIntegrationAccount[]>([]);
 const selectedAccountEmail = ref('');
 const history = ref<WeeklyReportHistoryDto | null>(null);
 const weeklySummary = ref('');
@@ -34,6 +48,7 @@ const draft = ref<WeeklyReportDraftDto | null>(null);
 const lastWeekPreviewMode = ref<'text' | 'html'>('text');
 const draftPreviewMode = ref<'text' | 'html'>('text');
 const loadingAccounts = ref(false);
+const connectingOutlook = ref(false);
 const loadingHistory = ref(false);
 const submitting = ref(false);
 const busyMessage = ref('');
@@ -113,8 +128,8 @@ async function loadAccounts() {
   errorMessage.value = '';
 
   try {
-    const nextAccounts = await fetchJson<ConnectedMicrosoftAccountDto[]>(
-      `${BACKEND_URL}/office/main-computers/weekly-report/accounts`,
+    const nextAccounts = await apiRequest<MicrosoftIntegrationAccount[]>(
+      '/integrations/microsoft/accounts',
     );
     accounts.value = nextAccounts;
 
@@ -126,7 +141,7 @@ async function loadAccounts() {
 
     const storedAccount = readStoredAccount();
     const hasStoredAccount = storedAccount
-      ? nextAccounts.some((account) => account.account_email === storedAccount)
+      ? nextAccounts.some((account) => account.accountEmail === storedAccount)
       : false;
 
     if (hasStoredAccount && storedAccount) {
@@ -136,8 +151,8 @@ async function loadAccounts() {
     }
 
     if (nextAccounts.length === 1) {
-      selectedAccountEmail.value = nextAccounts[0].account_email;
-      await loadHistory(nextAccounts[0].account_email);
+      selectedAccountEmail.value = nextAccounts[0].accountEmail;
+      await loadHistory(nextAccounts[0].accountEmail);
       return;
     }
 
@@ -153,6 +168,30 @@ async function loadAccounts() {
   }
 }
 
+async function connectOutlook() {
+  connectingOutlook.value = true;
+  errorMessage.value = '';
+
+  try {
+    const redirectTo = buildOAuthReturnUrl();
+    const params = new URLSearchParams({
+      redirectTo,
+    });
+    const response = await apiRequest<MicrosoftOauthStartResponse>(
+      `/integrations/microsoft/oauth/start?${params.toString()}`,
+    );
+
+    if (typeof window !== 'undefined') {
+      window.location.assign(response.authorizationUrl);
+      return;
+    }
+  } catch (error) {
+    errorMessage.value = getErrorMessage(error);
+  } finally {
+    connectingOutlook.value = false;
+  }
+}
+
 async function loadHistory(accountEmail: string) {
   loadingHistory.value = true;
   errorMessage.value = '';
@@ -161,8 +200,8 @@ async function loadHistory(accountEmail: string) {
     const params = new URLSearchParams({
       account_email: accountEmail,
     });
-    history.value = await fetchJson<WeeklyReportHistoryDto>(
-      `${BACKEND_URL}/office/main-computers/weekly-report/history?${params.toString()}`,
+    history.value = await apiRequest<WeeklyReportHistoryDto>(
+      `/agents/weekly-report/history?${params.toString()}`,
     );
   } catch (error) {
     history.value = null;
@@ -182,8 +221,8 @@ async function generateDraft() {
   errorMessage.value = '';
 
   try {
-    draft.value = await fetchJson<WeeklyReportDraftDto>(
-      `${BACKEND_URL}/office/main-computers/weekly-report/draft`,
+    draft.value = await apiRequest<WeeklyReportDraftDto>(
+      '/agents/weekly-report/draft',
       {
         method: 'POST',
         headers: {
@@ -225,8 +264,8 @@ async function reviseDraft() {
   };
 
   try {
-    const revisedDraft = await fetchJson<WeeklyReportDraftDto>(
-      `${BACKEND_URL}/office/main-computers/weekly-report/revise`,
+    const revisedDraft = await apiRequest<WeeklyReportDraftDto>(
+      '/agents/weekly-report/revise',
       {
         method: 'POST',
         headers: {
@@ -268,8 +307,8 @@ async function saveDraft() {
   };
 
   try {
-    const result = await fetchJson<WeeklyReportSaveDraftDto>(
-      `${BACKEND_URL}/office/main-computers/weekly-report/save-draft`,
+    const result = await apiRequest<WeeklyReportSaveDraftDto>(
+      '/agents/weekly-report/save-draft',
       {
         method: 'POST',
         headers: {
@@ -308,8 +347,8 @@ async function sendDraft() {
   };
 
   try {
-    const result = await fetchJson<WeeklyReportSendDto>(
-      `${BACKEND_URL}/office/main-computers/weekly-report/send`,
+    const result = await apiRequest<WeeklyReportSendDto>(
+      '/agents/weekly-report/send',
       {
         method: 'POST',
         headers: {
@@ -349,31 +388,18 @@ function persistSelectedAccount(accountEmail: string) {
   window.localStorage.setItem(ACCOUNT_STORAGE_KEY, accountEmail);
 }
 
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response));
-  }
-
-  return (await response.json()) as T;
-}
-
-async function extractErrorMessage(response: Response) {
-  try {
-    const payload = (await response.json()) as { message?: string };
-    if (payload.message) {
-      return payload.message;
-    }
-  } catch {
-    // Fall back to the status-based message below.
-  }
-
-  return `Request failed with status ${response.status}.`;
-}
-
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'An unexpected error occurred.';
+}
+
+function buildOAuthReturnUrl() {
+  if (typeof window === 'undefined') {
+    return 'http://localhost:5000/?open=weekly-report';
+  }
+
+  const url = new URL(window.location.origin);
+  url.searchParams.set('open', 'weekly-report');
+  return url.toString();
 }
 
 function formatSentDate(sentAt: string | null) {
@@ -519,6 +545,14 @@ function escapeHtml(value: string) {
                   <p class="rounded-2xl border-[3px] border-dashed border-[#6d88a3] px-4 py-3 text-sm leading-6 text-[#35516f]">
                     No connected Outlook accounts were found for the weekly report agent yet.
                   </p>
+                  <button
+                    type="button"
+                    class="mt-3 rounded-full border-[4px] border-[#213754] bg-[#8ecae6] px-5 py-3 text-sm font-bold text-[#12324b] transition enabled:hover:bg-[#a9dbf2] disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="connectingOutlook"
+                    @click="connectOutlook"
+                  >
+                    {{ connectingOutlook ? 'Connecting...' : 'Connect Outlook' }}
+                  </button>
                 </template>
 
                 <template v-else>
@@ -532,12 +566,21 @@ function escapeHtml(value: string) {
                     <option value="" :disabled="hasMultipleAccounts">Select an account</option>
                     <option
                       v-for="account in accounts"
-                      :key="account.account_email"
-                      :value="account.account_email"
+                      :key="account.id"
+                      :value="account.accountEmail"
                     >
-                      {{ account.account_email }}
+                      {{ account.accountEmail }}
                     </option>
                   </select>
+
+                  <button
+                    type="button"
+                    class="mt-3 rounded-full border-[3px] border-[#213754] bg-white px-4 py-2 text-sm font-bold text-[#213754] transition enabled:hover:bg-[#f8fbff] disabled:cursor-not-allowed disabled:opacity-60"
+                    :disabled="connectingOutlook"
+                    @click="connectOutlook"
+                  >
+                    {{ connectingOutlook ? 'Connecting...' : 'Connect another Outlook account' }}
+                  </button>
                 </template>
               </div>
 
