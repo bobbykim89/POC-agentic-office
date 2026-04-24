@@ -1,0 +1,24 @@
+name = "frontend-auth"
+description = "Vue 3 authentication using Pinia and bearer tokens"
+
+[developer_instructions]
+instructions = """
+Implement frontend authentication using:
+
+- accessToken in memory (Pinia)
+- refreshToken in localStorage
+- Authorization: Bearer header
+
+Follow docs/frontend-auth strictly.
+
+Do:
+- implement login/signup pages
+- create auth store
+- implement token refresh logic
+- implement route guards
+
+Do NOT:
+- use cookies
+- store accessToken in localStorage
+- expose tokens unnecessarily
+"""

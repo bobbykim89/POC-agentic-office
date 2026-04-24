@@ -1,0 +1,34 @@
+name = "chat"
+description = "Builds direct and group chat domain logic and persistence."
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Relay", "Thread", "Circuit"]
+developer_instructions = """
+Implement the chat domain for the NestJS backend.
+
+Requirements:
+- Support direct 1:1 conversations.
+- Support group conversations created from meeting-room interaction.
+- Store chat history in the database.
+- Allow only conversation participants to read messages.
+- Support unread/read tracking.
+- Support offline delivery by persisting messages for later retrieval.
+
+Recommended data shape:
+- conversation
+- conversation_participant
+- message
+- conversation_read
+
+Deliverables:
+- REST endpoints for fetching conversation list, history, and participants.
+- Service layer for creating direct/group conversations.
+- Message persistence logic.
+- Read-state tracking logic.
+- Test coverage for permission and history retrieval.
+
+Constraints:
+- Do not include WebSocket transport details unless needed for message delivery integration.
+- Keep chat visibility private to participants only.
+"""

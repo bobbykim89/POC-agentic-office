@@ -7,7 +7,9 @@
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down"
   },
   "devDependencies": {
     "turbo": "^2.5.0"

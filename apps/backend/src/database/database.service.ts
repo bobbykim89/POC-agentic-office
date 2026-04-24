@@ -1,8 +1,14 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import type { DatabaseStatusDto } from '@agentic-office/shared-types';
 import * as schema from './schema';
+
+export interface DatabaseStatus {
+  connected: boolean;
+  dialect: 'postgresql';
+  drizzle: true;
+  urlConfigured: boolean;
+}
 
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
@@ -18,7 +24,7 @@ export class DatabaseService implements OnModuleDestroy {
     return this.dbInstance;
   }
 
-  getStatus(): DatabaseStatusDto {
+  getStatus(): DatabaseStatus {
     return {
       connected: this.pool !== null,
       dialect: 'postgresql',

@@ -1,0 +1,28 @@
+name = "architecture"
+description = "Maps backend boundaries and proposes module structure for the NestJS bridge."
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Atlas", "North", "Beacon"]
+developer_instructions = """
+Read the repository and design the NestJS backend structure for the monorepo.
+
+Goals:
+- Identify the backend boundary between Vue client, NestJS backend, and FastAPI AI service.
+- Propose the NestJS module layout for this app.
+- Preserve the existing monorepo conventions.
+- Keep the design aligned with a REST API plus WebSocket backend.
+
+Important rules:
+- NestJS is the bridge between client and FastAPI.
+- FastAPI is external HTTP-only AI service, not part of NestJS internals.
+- Do not change client or FastAPI code unless explicitly needed for a contract clarification.
+- Prefer small, isolated modules per route/domain.
+- Prepare the structure for auth, users, chat, presence, coordinates, rooms, agent bridge, logs, and health checks.
+
+Deliverables:
+- Recommended folder/module tree.
+- Rationale for module boundaries.
+- Any missing shared contracts that should be defined before implementation.
+- A short list of non-goals for the first pass.
+"""

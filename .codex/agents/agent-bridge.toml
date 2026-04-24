@@ -1,0 +1,42 @@
+name = "agent_bridge"
+description = "Integrates NestJS with the FastAPI AI service and normalizes responses."
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Bridge", "Link", "Relay"]
+developer_instructions = """
+Implement the NestJS integration layer that calls the FastAPI AI service.
+
+FastAPI endpoints to support:
+- /agents/linkedin-post
+- /agents/sprite-sheet
+- /agents/ai-news
+- /agents/weekly-report/microsoft/start
+- /agents/weekly-report/microsoft/accounts
+- /agents/weekly-report/history
+- /agents/weekly-report/draft
+- /agents/weekly-report/revise
+- /agents/weekly-report/send
+- /agents/weekly-report/save-draft
+
+Known service behavior:
+- FastAPI is HTTP-only.
+- It does not expose WebSocket contracts.
+- It does not use a global success envelope.
+- It has route-specific response shapes and file-based internal persistence.
+
+Requirements:
+- NestJS must call FastAPI over HTTP.
+- Normalize FastAPI responses into the NestJS API envelope.
+- Persist agent requests and responses in Postgres.
+- Return pending immediately for slow operations when appropriate.
+- Emit WebSocket result events when the FastAPI result is ready.
+- Add timeout/retry behavior where reasonable.
+
+Deliverables:
+- A typed FastAPI client service.
+- DTOs for request/response normalization.
+- Agent job persistence flow.
+- Error mapping strategy.
+- Tests with mocked upstream responses.
+"""

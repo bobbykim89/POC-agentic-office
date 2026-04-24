@@ -1,0 +1,19 @@
+# Error Codes
+
+## Auth
+- AUTH_INVALID_CREDENTIALS
+- AUTH_UNAUTHORIZED
+
+## Chat
+- CHAT_NOT_FOUND
+- CHAT_FORBIDDEN
+
+## Agent
+- AGENT_FAILED
+- AGENT_TIMEOUT
+
+## Validation
+- VALIDATION_ERROR
+
+## General
+- INTERNAL_ERROR

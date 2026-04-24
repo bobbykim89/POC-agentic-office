@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { LinkedInPostDto } from '@agentic-office/shared-types';
+import { apiRequest } from '../lib/api-client';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -11,7 +12,6 @@ const emit = defineEmits<{
   complete: [payload: LinkedInPostDto];
 }>();
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
 const MAX_INPUT_LENGTH = 200;
 
 const inputText = ref('');
@@ -47,8 +47,8 @@ async function generatePost() {
   errorMessage.value = '';
 
   try {
-    const nextResult = await fetchJson<LinkedInPostDto>(
-      `${BACKEND_URL}/office/main-computers/linkedin-post`,
+    const nextResult = await apiRequest<LinkedInPostDto>(
+      '/agents/linkedin-post',
       {
         method: 'POST',
         headers: {
@@ -70,29 +70,6 @@ async function generatePost() {
 
 function closeTerminal() {
   emit('close');
-}
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-
-  if (!response.ok) {
-    throw new Error(await extractErrorMessage(response));
-  }
-
-  return (await response.json()) as T;
-}
-
-async function extractErrorMessage(response: Response) {
-  try {
-    const payload = (await response.json()) as { message?: string };
-    if (payload.message) {
-      return payload.message;
-    }
-  } catch {
-    // Fall back to the status-based message below.
-  }
-
-  return `Request failed with status ${response.status}.`;
 }
 
 function getErrorMessage(error: unknown) {
