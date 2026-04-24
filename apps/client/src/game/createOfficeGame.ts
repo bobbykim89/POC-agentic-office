@@ -24,6 +24,7 @@ export type OfficeGameCallbacks = {
   onOpenSpriteStudio?: () => void;
   onOpenChatRoom?: () => void;
   initialSpriteSheetUrl?: string | null;
+  showDebugZones?: boolean;
   isUiLocked?: () => boolean;
 };
 
@@ -420,6 +421,10 @@ class OfficeScene extends Phaser.Scene {
     this.add
       .image(GAME_WIDTH / 2, GAME_HEIGHT / 2, BACKDROP_KEY)
       .setDisplaySize(GAME_WIDTH, GAME_HEIGHT);
+
+    if (!this.callbacks.showDebugZones) {
+      return;
+    }
 
     this.drawDebugZone(CHARACTER_BOUNDS, 0x86a4bf, 0x000000, 0);
     BLOCKED_ZONES.forEach((zone) => {
