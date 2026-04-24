@@ -288,6 +288,57 @@ def draft_weekly_report(
     )
 
 
+def draft_weekly_report_from_context(
+    *,
+    account_email: str,
+    weekly_summary: str,
+    source_examples: list[WeeklyReportMessage],
+    last_week_email: WeeklyReportMessage | None,
+    recipient_override: str | None = None,
+    subject_override: str | None = None,
+) -> WeeklyReportDraftResult:
+    """Create a draft from pre-fetched Outlook history supplied by another service."""
+
+    normalized_summary = " ".join(weekly_summary.split())
+    if not normalized_summary:
+        raise RuntimeError("Provide a short weekly summary before drafting the 515 email.")
+
+    latest_email = last_week_email or (source_examples[0] if source_examples else None)
+    recipient = (
+        (recipient_override or "").strip()
+        or _first_recipient(latest_email)
+        or _weekly_report_default_recipient()
+    )
+    subject_hint = (subject_override or "").strip() or _default_weekly_report_subject(latest_email)
+
+    parsed = _generate_weekly_report_json(
+        prompt=_build_draft_prompt(
+            weekly_summary=normalized_summary,
+            latest_email=latest_email,
+            source_examples=source_examples,
+            subject_hint=subject_hint,
+            recipient_hint=recipient,
+        )
+    )
+
+    subject = _clean_generated_subject(parsed.get("subject"), subject_hint)
+    body = _clean_generated_body(parsed.get("body"))
+    body_html = _clean_generated_body_html(parsed.get("body_html"), body)
+    if not body:
+        raise RuntimeError("The weekly report draft came back empty.")
+
+    return WeeklyReportDraftResult(
+        account_email=account_email,
+        recipient=recipient,
+        subject=subject,
+        body=body,
+        body_html=body_html,
+        model=_weekly_report_model(),
+        source_examples=source_examples,
+        last_week_email=latest_email,
+    )
+
+
 def revise_weekly_report(
     *,
     account_email: str,

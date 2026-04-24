@@ -1,5 +1,6 @@
 import type { AINewsDto } from "@agentic-office/shared-types";
 import Phaser from "phaser";
+import { apiRequest } from "../lib/api-client";
 
 type FacingDirection = "front" | "back" | "left" | "right";
 type ZoneShape =
@@ -20,6 +21,9 @@ export type OfficeDialogueContent = DialogueContent;
 export type OfficeGameCallbacks = {
   onOpenLinkedInPostTerminal?: () => void;
   onOpenWeeklyReportTerminal?: () => void;
+  onOpenSpriteStudio?: () => void;
+  onOpenChatRoom?: () => void;
+  initialSpriteSheetUrl?: string | null;
   isUiLocked?: () => boolean;
 };
 
@@ -29,6 +33,7 @@ const BACKDROP_KEY = "office-map";
 const BACKDROP_PATH = "/maps/background-office-map.png";
 const EXTERNAL_SPRITE_SHEET_KEY = "office-worker-sheet";
 const EXTERNAL_SPRITE_SHEET_PATH = "/sprites/office-worker-directions.png";
+const CUSTOM_SPRITE_SHEET_KEY = "office-worker-sheet-custom";
 const SHEET_DIRECTION_ORDER: Array<Exclude<FacingDirection, "left">> = [
   "front",
   "back",
@@ -40,7 +45,6 @@ const MOVE_SPEED = 220;
 const CHARACTER_BOUNDS = new Phaser.Geom.Rectangle(30, 140, 1190, 650);
 const DEBUG_ZONE_FILL_ALPHA = 0.12;
 const DEBUG_ZONE_STROKE_ALPHA = 0.7;
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? "http://localhost:3000";
 const DIALOGUE_PAGE_MAX_CHARS = 345;
 const BLOCKED_ZONES: ZoneShape[] = [
   // this is the main meeting room
@@ -220,6 +224,9 @@ class OfficeScene extends Phaser.Scene {
 
     event.preventDefault();
   };
+  private readonly handleWindowBlur = () => {
+    this.resetMovementState();
+  };
   private arrowKeys!: {
     up: Phaser.Input.Keyboard.Key;
     down: Phaser.Input.Keyboard.Key;
@@ -242,6 +249,8 @@ class OfficeScene extends Phaser.Scene {
   private dialoguePages: string[] = [];
   private dialoguePageIndex = 0;
   private dialogueHintEnabled = true;
+  private currentSpriteSheetUrl: string | null = null;
+  private wasUiLocked = false;
 
   constructor(callbacks: OfficeGameCallbacks = {}) {
     super("office-scene");
@@ -291,11 +300,14 @@ class OfficeScene extends Phaser.Scene {
     window.addEventListener("keydown", this.handleWindowArrowScrollLock, {
       passive: false,
     });
+    window.addEventListener("blur", this.handleWindowBlur);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener("keydown", this.handleWindowArrowScrollLock);
+      window.removeEventListener("blur", this.handleWindowBlur);
     });
     this.events.once(Phaser.Scenes.Events.DESTROY, () => {
       window.removeEventListener("keydown", this.handleWindowArrowScrollLock);
+      window.removeEventListener("blur", this.handleWindowBlur);
     });
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
       const isArrowKey =
@@ -372,9 +384,20 @@ class OfficeScene extends Phaser.Scene {
       })
       .setDepth(20)
       .setVisible(false);
+
+    if (this.callbacks.initialSpriteSheetUrl) {
+      void this.updateActorSpriteSheet(this.callbacks.initialSpriteSheetUrl);
+    }
   }
 
   update(_: number, delta: number) {
+    const isUiLocked = Boolean(this.callbacks.isUiLocked?.());
+
+    if (isUiLocked !== this.wasUiLocked) {
+      this.resetMovementState();
+      this.wasUiLocked = isUiLocked;
+    }
+
     if (this.dialogueOpen && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
       this.advanceDialogue();
       return;
@@ -409,15 +432,15 @@ class OfficeScene extends Phaser.Scene {
 
   private createDirectionalTextures() {
     if (this.textures.exists(EXTERNAL_SPRITE_SHEET_KEY)) {
-      this.createDirectionalTexturesFromSheet();
+      this.createDirectionalTexturesFromSheet(EXTERNAL_SPRITE_SHEET_KEY);
       return;
     }
 
     this.createFallbackDirectionalTextures();
   }
 
-  private createDirectionalTexturesFromSheet() {
-    const texture = this.textures.get(EXTERNAL_SPRITE_SHEET_KEY);
+  private createDirectionalTexturesFromSheet(sourceTextureKey: string) {
+    const texture = this.textures.get(sourceTextureKey);
     const source = texture.getSourceImage() as HTMLImageElement;
     const frameWidth = Math.floor(source.width / SHEET_DIRECTION_ORDER.length);
     const frameHeight = source.height;
@@ -746,6 +769,38 @@ class OfficeScene extends Phaser.Scene {
         return;
       }
 
+      if (zone.id === "video-room") {
+        if (!this.callbacks.onOpenSpriteStudio) {
+          this.showDialogue(
+            {
+              title: "Sprite Studio",
+              body: zone.message,
+            },
+            zone.id,
+          );
+          return;
+        }
+
+        this.callbacks.onOpenSpriteStudio();
+        return;
+      }
+
+      if (zone.id === "meeting-room-table") {
+        if (!this.callbacks.onOpenChatRoom) {
+          this.showDialogue(
+            {
+              title: "Meeting Room Chat",
+              body: zone.message,
+            },
+            zone.id,
+          );
+          return;
+        }
+
+        this.callbacks.onOpenChatRoom();
+        return;
+      }
+
       this.showDialogue(
         {
           title: this.formatInteractionTitle(zone.id),
@@ -759,7 +814,11 @@ class OfficeScene extends Phaser.Scene {
           ? "LinkedIn Post Generator"
           : zone.id === "main-computers-bottom"
             ? "515 Generator"
-            : "Newsstand";
+            : zone.id === "video-room"
+              ? "Sprite Studio"
+              : zone.id === "meeting-room-table"
+                ? "Meeting Room Chat"
+              : "Newsstand";
       const body =
         error instanceof Error
           ? error.message
@@ -778,29 +837,7 @@ class OfficeScene extends Phaser.Scene {
   }
 
   private async fetchAINews(): Promise<AINewsDto> {
-    return this.fetchJson<AINewsDto>(`${BACKEND_URL}/office/newsstand`);
-  }
-
-  private async fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(url, init);
-    if (!response.ok) {
-      throw new Error(await this.extractErrorMessage(response));
-    }
-
-    return (await response.json()) as T;
-  }
-
-  private async extractErrorMessage(response: Response) {
-    try {
-      const payload = (await response.json()) as { message?: string };
-      if (payload.message) {
-        return payload.message;
-      }
-    } catch {
-      // Fall through to the status-based default message.
-    }
-
-    return `Request failed with status ${response.status}.`;
+    return apiRequest<AINewsDto>('/agents/ai-news');
   }
   private showDialogue(content: DialogueContent, zoneId?: string) {
     this.dialogueOpen = true;
@@ -959,6 +996,83 @@ class OfficeScene extends Phaser.Scene {
   private getTextureKeyForDirection(direction: FacingDirection) {
     return `office-worker-${direction}`;
   }
+
+  private resetMovementState() {
+    this.input.keyboard?.resetKeys();
+    this.actorVelocity.set(0, 0);
+  }
+
+  public async updateActorSpriteSheet(spriteSheetUrl: string | null) {
+    const normalizedUrl = spriteSheetUrl?.trim() || null
+    if (normalizedUrl === this.currentSpriteSheetUrl) {
+      return
+    }
+
+    try {
+      if (normalizedUrl) {
+        await this.loadSpriteSheetTexture(CUSTOM_SPRITE_SHEET_KEY, normalizedUrl)
+        this.rebuildDirectionalTextures(CUSTOM_SPRITE_SHEET_KEY)
+        this.currentSpriteSheetUrl = normalizedUrl
+      } else {
+        this.rebuildDirectionalTextures(EXTERNAL_SPRITE_SHEET_KEY)
+        this.currentSpriteSheetUrl = null
+      }
+    } catch (error) {
+      console.error('Failed to load custom sprite sheet.', error)
+      this.rebuildDirectionalTextures(EXTERNAL_SPRITE_SHEET_KEY)
+      this.currentSpriteSheetUrl = null
+    }
+
+    this.actor.setTexture(this.getTextureKeyForDirection(this.facing))
+    const actorTexture = this.textures.get(this.getTextureKeyForDirection(this.facing))
+    const actorSource = actorTexture.getSourceImage() as
+      | HTMLCanvasElement
+      | HTMLImageElement
+    this.actor.setScale(TARGET_ACTOR_HEIGHT / actorSource.height)
+  }
+
+  private rebuildDirectionalTextures(sourceTextureKey: string) {
+    ;(["front", "back", "right", "left"] as FacingDirection[]).forEach((direction) => {
+      const textureKey = this.getTextureKeyForDirection(direction)
+      if (this.textures.exists(textureKey)) {
+        this.textures.remove(textureKey)
+      }
+    })
+
+    this.createDirectionalTexturesFromSheet(sourceTextureKey)
+  }
+
+  private loadSpriteSheetTexture(textureKey: string, url: string) {
+    return new Promise<void>((resolve, reject) => {
+      const cleanup = () => {
+        this.load.off(Phaser.Loader.Events.COMPLETE, handleComplete)
+        this.load.off("loaderror", handleLoadError)
+      }
+
+      const handleComplete = () => {
+        cleanup()
+        resolve()
+      }
+
+      const handleLoadError = (file: Phaser.Loader.File) => {
+        if (file.key !== textureKey) {
+          return
+        }
+
+        cleanup()
+        reject(new Error(`Could not load sprite sheet from ${url}.`))
+      }
+
+      if (this.textures.exists(textureKey)) {
+        this.textures.remove(textureKey)
+      }
+
+      this.load.once(Phaser.Loader.Events.COMPLETE, handleComplete)
+      this.load.on("loaderror", handleLoadError)
+      this.load.image(textureKey, url)
+      this.load.start()
+    })
+  }
 }
 
 export type OfficeGameInstance = Phaser.Game;
@@ -975,6 +1089,22 @@ export function showOfficeDialogue(
   if (scene instanceof OfficeScene) {
     scene.presentExternalDialogue(content);
   }
+}
+
+export function updateOfficePlayerSprite(
+  game: OfficeGameInstance | null,
+  spriteSheetUrl: string | null,
+) {
+  if (!game) {
+    return Promise.resolve()
+  }
+
+  const scene = game.scene.getScene("office-scene")
+  if (scene instanceof OfficeScene) {
+    return scene.updateActorSpriteSheet(spriteSheetUrl)
+  }
+
+  return Promise.resolve()
 }
 
 export function createOfficeGame(

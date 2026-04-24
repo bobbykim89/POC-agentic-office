@@ -6,6 +6,7 @@ import type {
   ChatSendDto,
   RealtimeEnvelope,
 } from '@agentic-office/shared-types';
+import { useAuthStore } from '../stores/auth';
 
 type ChatEntry = {
   id: string;
@@ -14,7 +15,11 @@ type ChatEntry = {
   createdAt: string;
 };
 
-const backendUrl = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3000';
+const backendUrl =
+  import.meta.env.VITE_BACKEND_URL ??
+  import.meta.env.VITE_BACKEND_API_URL ??
+  'http://localhost:3000';
+const authStore = useAuthStore();
 const socketStatus = ref<'connecting' | 'connected' | 'disconnected'>('connecting');
 const socketId = ref<string>('');
 const draft = ref('');
@@ -34,8 +39,16 @@ function appendEnvelope(envelope: RealtimeEnvelope<ChatMessagePayload>) {
 }
 
 function connectSocket() {
+  if (!authStore.accessToken) {
+    socketStatus.value = 'disconnected';
+    return;
+  }
+
   socket = io(`${backendUrl}/realtime`, {
     transports: ['websocket'],
+    auth: {
+      token: authStore.accessToken,
+    },
   });
 
   socket.on('connect', () => {

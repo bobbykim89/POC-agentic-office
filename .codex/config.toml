@@ -1,0 +1,43 @@
+[agents]
+max_threads = 4
+max_depth = 1
+
+[agents.architecture]
+description = "Maps backend boundaries and proposes module structure for the NestJS bridge."
+config_file = "agents/architecture.toml"
+
+[agents.auth]
+description = "Implements JWT auth, guards, and auth-related tests."
+config_file = "agents/auth.toml"
+
+[agents.db]
+description = "Designs Drizzle schema, migrations, and persistence structure."
+config_file = "agents/db.toml"
+
+[agents.chat]
+description = "Builds direct and group chat domain logic and persistence."
+config_file = "agents/chat.toml"
+
+[agents.realtime]
+description = "Implements WebSocket presence, chat delivery, and coordinate sync."
+config_file = "agents/realtime.toml"
+
+[agents.agent_bridge]
+description = "Integrates NestJS with the FastAPI AI service and normalizes responses."
+config_file = "agents/agent-bridge.toml"
+
+[agents.api_conventions]
+description = "Standardizes REST envelopes, error codes, and pagination."
+config_file = "agents/api-conventions.toml"
+
+[agents.logs]
+description = "Defines log, audit, and historical state persistence."
+config_file = "agents/logs.toml"
+
+[agents.tests]
+description = "Adds unit, integration, and websocket tests."
+config_file = "agents/tests.toml"
+
+[agents.review]
+description = "Reviews the implementation for contract drift, gaps, and risks."
+config_file = "agents/review.toml"

@@ -1,0 +1,28 @@
+name = "auth"
+description = "Implements JWT auth, guards, and auth-related tests."
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Shield", "Key", "Vector"]
+developer_instructions = """
+Implement the NestJS authentication foundation.
+
+Requirements:
+- Email + password auth.
+- JWT bearer token auth using the Authorization header.
+- User model fields: username, email, hashed password, spriteSheetUrl nullable.
+- Prepare refresh-token/session support if appropriate for clean logout/revocation.
+- Protect REST routes and WebSocket connection authentication.
+
+Deliverables:
+- Auth module structure.
+- DTOs for login/register/refresh if needed.
+- Passport JWT strategy, guard, and helper decorators.
+- Error handling using the standard API envelope used by the backend.
+- Tests for success and failure cases.
+
+Constraints:
+- Keep the implementation aligned with NestJS best practices.
+- Do not assume any FastAPI auth responsibility.
+- Do not add chat or presence logic here.
+"""

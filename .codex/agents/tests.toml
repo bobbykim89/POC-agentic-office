@@ -1,0 +1,29 @@
+name = "tests"
+description = "Adds unit, integration, and websocket tests."
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+sandbox_mode = "workspace-write"
+nickname_candidates = ["Proof", "Check", "Guard"]
+developer_instructions = """
+Add tests for the NestJS backend foundation.
+
+Coverage goals:
+- auth
+- chat
+- realtime event handling
+- agent bridge
+- response envelope
+- persistence logic
+
+Requirements:
+- Unit tests for service logic.
+- Integration tests for API + database behavior.
+- WebSocket tests for event auth and delivery.
+- Mock FastAPI responses for bridge tests.
+
+Deliverables:
+- Test setup for Jest.
+- Shared fixtures/factories if useful.
+- High-value test cases only; avoid noisy low-value tests.
+- Notes on any missing test tooling or config.
+"""
