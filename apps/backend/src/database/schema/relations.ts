@@ -1,4 +1,5 @@
 import { relations } from 'drizzle-orm';
+import { assistantNotifications } from './assistant-notifications.schema';
 import { agentJobs } from './agent-jobs.schema';
 import { conversationReads } from './conversation-reads.schema';
 import { conversationParticipants, conversations } from './conversations.schema';
@@ -27,8 +28,19 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   externalAccounts: many(externalAccounts),
   oauthStates: many(oauthStates),
   agentJobs: many(agentJobs),
+  assistantNotifications: many(assistantNotifications),
   logs: many(logs),
 }));
+
+export const assistantNotificationsRelations = relations(
+  assistantNotifications,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [assistantNotifications.userId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const externalAccountsRelations = relations(externalAccounts, ({ one }) => ({
   user: one(users, {

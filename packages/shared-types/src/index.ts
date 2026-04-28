@@ -143,3 +143,33 @@ export interface RealtimeEnvelope<TPayload = Record<string, unknown>> {
   channel: string;
   event: ApiEvent<TPayload>;
 }
+
+export type AvatarAssistantActionType =
+  | 'open_weekly_report'
+  | 'open_news'
+  | 'open_email_summary'
+  | 'open_task_hint';
+
+export interface AvatarAssistantActionDto {
+  type: AvatarAssistantActionType;
+  label: string;
+}
+
+export interface AvatarAssistantMessageDto {
+  id: string;
+  kind:
+    | 'proactive_515'
+    | 'morning_briefing'
+    | 'breaking_alert'
+    | 'recurring_task'
+    | 'unreplied_email';
+  priority: 'info' | 'important' | 'urgent';
+  title: string;
+  body: string;
+  suggestedAction: AvatarAssistantActionDto | null;
+  generatedAt: string;
+}
+
+export type AvatarAssistantPreviewMode =
+  | 'friday_sent'
+  | 'friday_reminder';
