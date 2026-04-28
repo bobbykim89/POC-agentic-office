@@ -16,6 +16,11 @@ type InteractionZone = {
 type DialogueContent = {
   title: string;
   body: string;
+  choices?: DialogueChoice[];
+};
+type DialogueChoice = {
+  label: string;
+  onSelect?: () => void;
 };
 export type OfficeDialogueContent = DialogueContent;
 export type OfficeGameCallbacks = {
@@ -212,6 +217,7 @@ const TARGET_ACTOR_HEIGHT = 108;
 
 class OfficeScene extends Phaser.Scene {
   private readonly callbacks: OfficeGameCallbacks;
+  private sceneReady = false;
   private readonly handleWindowArrowScrollLock = (event: KeyboardEvent) => {
     const isArrowKey =
       event.key === "ArrowUp" ||
@@ -240,6 +246,7 @@ class OfficeScene extends Phaser.Scene {
   private dialogueBox!: Phaser.GameObjects.Rectangle;
   private dialogueTitleText!: Phaser.GameObjects.Text;
   private dialogueBodyText!: Phaser.GameObjects.Text;
+  private dialogueChoicesText!: Phaser.GameObjects.Text;
   private dialogueHintText!: Phaser.GameObjects.Text;
   private facing: FacingDirection = "front";
   private actorVelocity = new Phaser.Math.Vector2(0, 0);
@@ -250,6 +257,8 @@ class OfficeScene extends Phaser.Scene {
   private dialoguePages: string[] = [];
   private dialoguePageIndex = 0;
   private dialogueHintEnabled = true;
+  private dialogueChoices: DialogueChoice[] = [];
+  private selectedDialogueChoiceIndex = 0;
   private currentSpriteSheetUrl: string | null = null;
   private wasUiLocked = false;
 
@@ -374,6 +383,16 @@ class OfficeScene extends Phaser.Scene {
       })
       .setDepth(31)
       .setVisible(false);
+    this.dialogueChoicesText = this.add
+      .text(52, GAME_HEIGHT - 86, "", {
+        color: "#1f3956",
+        fontFamily: "Avenir Next, sans-serif",
+        fontSize: "20px",
+        fontStyle: "bold",
+        lineSpacing: 10,
+      })
+      .setDepth(31)
+      .setVisible(false);
     this.dialogueHintText = this.add
       .text(36, 70, "Press E to close", {
         color: "#dff1ff",
@@ -389,6 +408,8 @@ class OfficeScene extends Phaser.Scene {
     if (this.callbacks.initialSpriteSheetUrl) {
       void this.updateActorSpriteSheet(this.callbacks.initialSpriteSheetUrl);
     }
+
+    this.sceneReady = true;
   }
 
   update(_: number, delta: number) {
@@ -402,6 +423,18 @@ class OfficeScene extends Phaser.Scene {
     if (this.dialogueOpen && Phaser.Input.Keyboard.JustDown(this.interactKey)) {
       this.advanceDialogue();
       return;
+    }
+
+    if (this.dialogueOpen && this.dialogueChoices.length > 0) {
+      if (Phaser.Input.Keyboard.JustDown(this.arrowKeys.up)) {
+        this.moveDialogueChoiceSelection(-1);
+        return;
+      }
+
+      if (Phaser.Input.Keyboard.JustDown(this.arrowKeys.down)) {
+        this.moveDialogueChoiceSelection(1);
+        return;
+      }
     }
 
     const elapsed = delta / 1000;
@@ -850,16 +883,23 @@ class OfficeScene extends Phaser.Scene {
     this.dialoguePages = this.paginateDialogue(content.body);
     this.dialoguePageIndex = 0;
     this.dialogueHintEnabled = true;
+    this.dialogueChoices = content.choices ?? [];
+    this.selectedDialogueChoiceIndex = 0;
     this.dialogueTitleText.setText(content.title);
     this.dialogueBox.setVisible(true);
     this.dialogueTitleText.setVisible(true);
     this.dialogueBodyText.setVisible(true);
+    this.dialogueChoicesText.setVisible(false);
     this.promptText.setVisible(false);
     this.renderDialoguePage();
   }
 
   public presentExternalDialogue(content: DialogueContent) {
     this.showDialogue(content);
+  }
+
+  public isReady() {
+    return this.sceneReady;
   }
 
   private hideDialogue() {
@@ -871,7 +911,10 @@ class OfficeScene extends Phaser.Scene {
     this.dialogueBox.setVisible(false);
     this.dialogueTitleText.setVisible(false);
     this.dialogueBodyText.setVisible(false);
+    this.dialogueChoicesText.setVisible(false);
     this.dialogueHintText.setVisible(false);
+    this.dialogueChoices = [];
+    this.selectedDialogueChoiceIndex = 0;
   }
 
   private advanceDialogue() {
@@ -881,12 +924,20 @@ class OfficeScene extends Phaser.Scene {
       return;
     }
 
+    if (this.dialogueChoices.length > 0) {
+      const choice = this.dialogueChoices[this.selectedDialogueChoiceIndex];
+      this.hideDialogue();
+      choice?.onSelect?.();
+      return;
+    }
+
     this.hideDialogue();
   }
 
   private renderDialoguePage() {
     const page = this.dialoguePages[this.dialoguePageIndex] ?? "";
     this.dialogueBodyText.setText(page);
+    this.renderDialogueChoices();
 
     if (!this.dialogueHintEnabled) {
       this.dialogueHintText.setVisible(false);
@@ -903,7 +954,48 @@ class OfficeScene extends Phaser.Scene {
       return;
     }
 
+    if (this.dialogueChoices.length > 0) {
+      this.dialogueHintText.setText("Use arrows to choose, press E");
+      return;
+    }
+
     this.dialogueHintText.setText("Press E to close");
+  }
+
+  private renderDialogueChoices() {
+    const choicesVisible =
+      this.dialogueChoices.length > 0 &&
+      this.dialoguePageIndex === this.dialoguePages.length - 1;
+
+    if (!choicesVisible) {
+      this.dialogueChoicesText.setVisible(false);
+      return;
+    }
+
+    this.dialogueChoicesText.setText(
+      this.dialogueChoices
+        .map((choice, index) =>
+          `${index === this.selectedDialogueChoiceIndex ? "> " : "  "}${choice.label}`,
+        )
+        .join("\n"),
+    );
+    this.dialogueChoicesText.setVisible(true);
+  }
+
+  private moveDialogueChoiceSelection(direction: -1 | 1) {
+    if (this.dialogueChoices.length === 0) {
+      return;
+    }
+
+    const nextIndex =
+      (this.selectedDialogueChoiceIndex + direction + this.dialogueChoices.length) %
+      this.dialogueChoices.length;
+    if (nextIndex === this.selectedDialogueChoiceIndex) {
+      return;
+    }
+
+    this.selectedDialogueChoiceIndex = nextIndex;
+    this.renderDialoguePage();
   }
 
   private paginateDialogue(body: string) {
@@ -947,6 +1039,7 @@ class OfficeScene extends Phaser.Scene {
 
   private readMovementInput() {
     if (
+      this.dialogueOpen ||
       this.interactionBusy ||
       this.callbacks.isUiLocked?.() ||
       this.isEditableElementFocused()
@@ -1086,14 +1179,31 @@ export function showOfficeDialogue(
   game: OfficeGameInstance | null,
   content: OfficeDialogueContent,
 ) {
+  return attemptShowOfficeDialogue(game, content, 0)
+}
+
+function attemptShowOfficeDialogue(
+  game: OfficeGameInstance | null,
+  content: OfficeDialogueContent,
+  attempt: number,
+) {
   if (!game) {
-    return;
+    return
   }
 
   const scene = game.scene.getScene("office-scene");
-  if (scene instanceof OfficeScene) {
+  if (scene instanceof OfficeScene && scene.isReady()) {
     scene.presentExternalDialogue(content);
+    return
   }
+
+  if (attempt >= 10) {
+    return
+  }
+
+  window.setTimeout(() => {
+    attemptShowOfficeDialogue(game, content, attempt + 1)
+  }, 150)
 }
 
 export function updateOfficePlayerSprite(
