@@ -34,7 +34,7 @@ export function useSystemStatus() {
   const loading = ref(true)
   const errorMessage = ref('')
   const lastCheckedAt = ref<string | null>(null)
-  let pollTimer: ReturnType<typeof window.setInterval> | null = null
+  let pollTimer: number | null = null
 
   const authStatus = computed<StatusItem>(() => {
     if (authStore.isLoading && !authStore.initialized) {

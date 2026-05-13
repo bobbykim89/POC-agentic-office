@@ -10,7 +10,11 @@ import ChatModal from '../components/ChatModal.vue'
 import LinkedInPostTerminal from '../components/LinkedInPostTerminal.vue'
 import SpriteStudioModal from '../components/SpriteStudioModal.vue'
 import WeeklyReportTerminal from '../components/WeeklyReportTerminal.vue'
-import type { LinkedInPostDto } from '@agentic-office/shared-types'
+import type {
+  AvatarAssistantMessageDto,
+  LinkedInPostDto,
+} from '@agentic-office/shared-types'
+import { apiRequest } from '../lib/api-client'
 import {
   useSystemStatus,
   type StatusTone,
@@ -64,6 +68,8 @@ onMounted(() => {
       spriteStudioOpen.value ||
       chatModalOpen.value,
   })
+
+  void presentAvatarAssistantMessage()
 })
 
 onUnmounted(() => {
@@ -111,6 +117,61 @@ function handleLinkedInPostComplete(result: LinkedInPostDto) {
     title: 'LinkedIn Post Generator',
     body: result.post,
   })
+}
+
+async function presentAvatarAssistantMessage() {
+  try {
+    const preview = readSingleQueryParam(route.query.assistantPreview)
+    const params = new URLSearchParams()
+
+    if (preview) {
+      params.set('preview', preview)
+    }
+
+    const message = await apiRequest<AvatarAssistantMessageDto | null>(
+      `/avatar-assistant/message${params.size > 0 ? `?${params.toString()}` : ''}`,
+    )
+    if (!message) {
+      return
+    }
+
+    showOfficeDialogue(game, {
+      title: message.title,
+      body: message.body,
+      choices: buildAssistantChoices(message),
+    })
+  } catch (error) {
+    console.error('Failed to load avatar assistant message.', error)
+  }
+}
+
+function buildAssistantChoices(message: AvatarAssistantMessageDto) {
+  if (!message.suggestedAction) {
+    return []
+  }
+
+  return [
+    {
+      label: message.suggestedAction.label,
+      onSelect: () => {
+        handleAssistantAction(message)
+      },
+    },
+    {
+      label: 'Dismiss',
+    },
+  ]
+}
+
+function handleAssistantAction(message: AvatarAssistantMessageDto) {
+  if (!message.suggestedAction) {
+    return
+  }
+
+  if (message.suggestedAction.type === 'open_weekly_report') {
+    weeklyReportTerminalOpen.value = true
+    return
+  }
 }
 
 watch(

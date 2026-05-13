@@ -1,3 +1,4 @@
+export * from './assistant-notifications.schema';
 export * from './agent-jobs.schema';
 export * from './conversation-reads.schema';
 export * from './conversations.schema';
