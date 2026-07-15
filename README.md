@@ -44,9 +44,9 @@ flowchart LR
 ```
 
 NestJS owns auth, chat, world state, persistence, and orchestration. FastAPI
-is a stateless HTTP-only AI execution layer with no database of its own. The
-client never calls FastAPI directly — every agent request goes through the
-backend.
+is an HTTP-only AI execution layer that is stateless from the backend's
+perspective and holds no database of its own. The client never calls FastAPI
+directly — every agent request goes through the backend.
 
 See [docs/architecture.md](docs/architecture.md) for the full picture.
 

@@ -40,9 +40,11 @@ report mail. Both services hold their own Graph credentials today; there is
 no shared Graph client between them.
 
 The client never talks to FastAPI, OpenAI, Cloudinary, or Microsoft Graph
-directly. Every one of those external dependencies is reached through the
-NestJS backend, which is the only workspace with a database connection and
-the only workspace that any external service is configured to trust.
+directly — every client request reaches them only after passing through the
+NestJS backend first. The backend is the only workspace with a database
+connection, but it is not the only workspace holding external credentials:
+the ai-service reaches OpenAI, Cloudinary, and Microsoft Graph itself, using
+credentials of its own.
 
 ## Responsibility split
 
