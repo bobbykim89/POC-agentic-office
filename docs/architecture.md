@@ -31,39 +31,39 @@ flowchart TB
     B -->|"OAuth + mail"| MS
     A -->|"LLM + images"| OAI
     A -->|"sprite upload"| CL
-    A -->|"515 mail"| MS
 ```
 
-Microsoft Graph is reached from two independent places: the backend uses it
-for OAuth login and mail, and the ai-service uses it for sending the 515
-report mail. Both services hold their own Graph credentials today; there is
-no shared Graph client between them.
+The backend uses Graph for OAuth account linking and mail. For the weekly
+515 specifically, it performs all Graph mail activity: reading the user's
+sent-mail history, sending the report, and saving drafts. The ai-service's
+contribution to the 515 is the drafted and revised text only — it never
+talks to Graph itself.
 
 The client never talks to FastAPI, OpenAI, Cloudinary, or Microsoft Graph
 directly — every client request reaches them only after passing through the
 NestJS backend first. The backend is the only workspace with a database
 connection, but it is not the only workspace holding external credentials:
-the ai-service reaches OpenAI, Cloudinary, and Microsoft Graph itself, using
-credentials of its own.
+the ai-service reaches OpenAI and Cloudinary itself, using credentials of its
+own.
 
 ## Responsibility split
 
 NestJS owns everything that has state or a client-facing contract: auth,
-users, chat, presence, world state, the WebSocket gateway, Postgres
-persistence, agent orchestration, and logging. FastAPI owns AI execution only
-— it is stateless from the backend's perspective and holds no database
-connection of its own. The integration rule between the two is simple: HTTP
-only, one direction, backend calls ai-service.
+users, chat, presence, the WebSocket gateway, Postgres persistence, agent
+orchestration, and logging. FastAPI owns AI execution only — it holds no
+database connection of its own. The integration rule between the two is
+simple: HTTP only, one direction, backend calls ai-service.
 
 FastAPI never calls back into NestJS, never touches Postgres, and never
 receives a client request directly — the client does not know the
 ai-service's port or address, only the backend's. This keeps the AI
 execution layer swappable and testable in isolation: as long as an
 ai-service implements the same HTTP contract, the backend does not care what
-model, prompt, or provider sits behind it. FastAPI does use file-based
-storage internally for its own implementation, but NestJS treats that as an
+model, prompt, or provider sits behind it. FastAPI keeps its own on-disk
+JSON state for its own implementation, but NestJS treats that as an
 implementation detail and never relies on it as a system of record — Postgres
-is the only durable store for the system as a whole. See
+is the backend's only datastore, and the only durable store for the system
+as a whole. See
 [Backend architecture](backend-spec/01-architecture.md) for the full detail
 on this split.
 
@@ -145,7 +145,7 @@ events: `presence:update`, `chat:message`, `chat:ack`, `user:move`, and
 received from and sent back to clients. Realtime carries no agent events at
 all — agents are strictly HTTP
 request/response, handled entirely by the agent-bridge flow described above;
-the gateway never emits or listens for anything agent-related.
+no live code path emits agent events.
 
 Presence, socket-to-user mappings, room membership, and player positions are
 held in memory in `PresenceService`'s plain JS `Map`s, not in Postgres — there
@@ -159,7 +159,7 @@ event catalog.
 ## Persistence
 
 The backend uses Drizzle against Postgres 16 as its only datastore; neither
-the client nor the ai-service has a database connection of its own. Ten
+the client nor the ai-service has a database connection of its own. Nine
 tables are live:
 
 **Identity & auth**
@@ -167,9 +167,6 @@ tables are live:
   reissue access tokens (there is no separate refresh-tokens table)
 - `external_accounts` — linked external provider accounts (e.g. Microsoft) per user
 - `oauth_states` — short-lived state values for the OAuth handshake
-
-**World state**
-- `rooms` — the set of rooms in the office map
 
 **Chat**
 - `conversations` — a chat conversation, optionally tied to a room
@@ -182,29 +179,29 @@ tables are live:
   the agent flow above
 - `assistant_notifications` — messages queued for the avatar assistant to surface
 
-These ten map directly onto the responsibility split above: identity backs
-auth, world state backs the room model, chat backs the realtime gateway's
-persisted history, and the agents-and-ops group backs the agent-bridge flow
-and the avatar assistant. Presence, socket state, and per-frame movement are
-not in this list — as the realtime section above describes, those stay in an
-in-memory `Map` and are never written to a table. See
+These nine map directly onto the responsibility split above: identity backs
+auth, chat backs the realtime gateway's persisted history, and the
+agents-and-ops group backs the agent-bridge flow and the avatar assistant.
+Presence, socket state, and per-frame movement are not in this list — as the
+realtime section above describes, those stay in an in-memory `Map` and are
+never written to a table. See
 [Persistence](backend-spec/07-persistence.md) for column-level detail.
 
 ## Avatar assistant
 
 The avatar assistant is the one component in the system that acts without a
-client-initiated agent call. `Proactive515Detector.detect` reads backend
-state and, when conditions are met, writes a row through
-`assistant-notifications.repository.ts`. There is no separate mechanism that
-triggers this on its own: `AvatarAssistantService` invokes `detect`
-synchronously, inline, from inside the handler for
-`GET /avatar-assistant/message` — the detection logic only ever runs because,
-and exactly when, the client makes that request. The client has no push
-channel for this — it polls that same endpoint to pick up anything the
-detector has written. Every other capability described above is triggered by
-something the user did directly; this is the closest thing to an exception,
-and it stays scoped to that single detector and that single polling
-endpoint.
+client-initiated agent call. `Proactive515Detector.detect` reads the user's
+Outlook sent mail through Graph and, when conditions are met, writes a row
+through `assistant-notifications.repository.ts`. There is no separate
+mechanism that triggers this on its own: `AvatarAssistantService` invokes
+`detect` synchronously, inline, from inside the handler for
+`GET /avatar-assistant/message` — the detection logic only ever runs
+because, and exactly when, the client makes that request. The client has no
+push channel for this — it fetches that same endpoint once when the office
+loads to pick up anything the detector has written. Every other capability
+described above is triggered by something the user did directly; this is
+the closest thing to an exception, and it stays scoped to that single
+detector and that single fetch-once endpoint.
 
 ## Read next
 
