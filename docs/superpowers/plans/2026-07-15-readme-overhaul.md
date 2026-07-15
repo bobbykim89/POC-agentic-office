@@ -115,6 +115,12 @@ All backend vars have code defaults (`AI_AGENTS_URL` → `http://localhost:8001`
 
 Task 1 produces no committed artifact — it produces the verified command transcript that Tasks 2 and 3 depend on. It is separate because a reviewer can reject "verification was not actually run" independently of any prose.
 
+## Execution order: 1 → 3 → 2 → 4
+
+**Task 3 runs before Task 2.** The dependency points one way: `README.md` links to `docs/architecture.md`, but architecture.md's read-next map never links the README. Creating architecture.md first means the README's link resolves the moment it is written — no intermediate commit with a broken headline link, and no plan-mandated dead link for a reviewer to flag.
+
+Task numbering below is unchanged; only the order of execution differs.
+
 ---
 
 ### Task 1: Verify the setup path end-to-end
@@ -219,9 +225,11 @@ No commit — this task produces scratch only.
 **Files:**
 - Modify: `README.md` (full rewrite, currently 65 lines)
 
+**Runs after Task 3** (see Execution order).
+
 **Interfaces:**
-- Consumes: the verified transcript from Task 1 — the quick start section copies the working sequence verbatim
-- Produces: a relative link to `docs/architecture.md`, which Task 3 must satisfy
+- Consumes: the verified transcript from Task 1 — the quick start section copies the working sequence verbatim. Also `docs/architecture.md`, created by Task 3, which this task links to and which must already exist.
+- Produces: nothing later tasks depend on
 
 - [ ] **Step 1: Write the README**
 
@@ -312,7 +320,7 @@ Run:
 ```bash
 grep -oE '\]\(([^)#]+)\)' README.md | sed -E 's/\]\((.*)\)/\1/' | grep -v '^http' | while read -r p; do [ -e "$p" ] && echo "OK   $p" || echo "DEAD $p"; done
 ```
-Expected: every line `OK`. `docs/architecture.md` will report `DEAD` until Task 3 — that is the only acceptable failure, and Task 4 re-runs this.
+Expected: every line `OK`, with no exceptions — `docs/architecture.md` already exists because Task 3 runs first. Any `DEAD` line is a defect to fix before committing.
 
 - [ ] **Step 4: Verify no forbidden doc is linked**
 
@@ -330,9 +338,14 @@ grep -niE 'agentjob|agent_jobs|agent:pending|agent:error|coordinates|5173|roadma
 ```
 Expected: `CLEAN`. Each of these is either dead code, a corrected fact, or forward-looking content.
 
-- [ ] **Step 6: Verify the mermaid diagram parses**
+- [ ] **Step 6: Verify the mermaid diagram actually renders**
 
-Paste the diagram into https://mermaid.live and confirm it renders. Expected: a four-node flowchart, no syntax error.
+Extract the diagram body (the lines between the ```` ```mermaid ```` fences) into a scratch `.mmd` file and render it:
+
+```bash
+npx -y @mermaid-js/mermaid-cli -i /tmp/readme-diagram.mmd -o /tmp/readme-diagram.svg
+```
+Expected: `Generating single mermaid chart` and an `.svg` file is produced. A non-zero exit or absent SVG means the diagram is broken — fix it. Do not skip this step or substitute eyeballing the syntax; the SVG existing is the evidence.
 
 - [ ] **Step 7: Commit**
 
@@ -469,9 +482,15 @@ grep -niE 'agentjob|agent_jobs|agent:pending|agent:error|room:join|room:leave|ch
 ```
 Expected: `CLEAN`. This is the check that enforces the "document only what runs" decision.
 
-- [ ] **Step 6: Verify both mermaid diagrams parse**
+- [ ] **Step 6: Verify both mermaid diagrams actually render**
 
-Paste each into https://mermaid.live. Expected: the flowchart renders 7 nodes; the sequence diagram renders 5 participants. No syntax errors.
+Extract each diagram body (the lines between the ```` ```mermaid ```` fences) into its own scratch `.mmd` file and render both:
+
+```bash
+npx -y @mermaid-js/mermaid-cli -i /tmp/arch-system.mmd -o /tmp/arch-system.svg
+npx -y @mermaid-js/mermaid-cli -i /tmp/arch-flow.mmd -o /tmp/arch-flow.svg
+```
+Expected: both commands print `Generating single mermaid chart` and produce an `.svg`. A non-zero exit or absent SVG means that diagram is broken — fix it. Do not skip this step or substitute eyeballing the syntax; the SVGs existing are the evidence.
 
 - [ ] **Step 7: Commit**
 
