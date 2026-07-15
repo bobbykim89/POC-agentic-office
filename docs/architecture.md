@@ -137,9 +137,11 @@ tokens.
 ## Realtime
 
 The gateway is Socket.IO. Inbound, the backend handles `presence:join`,
-`presence:update`, `chat:send`, and `user:move`. Outbound, it emits exactly
-four events: `presence:update`, `chat:ack`, `chat:message`, and `error`.
-Realtime carries no agent events at all — agents are strictly HTTP
+`presence:update`, `chat:send`, and `user:move`. Outbound, it emits five
+events: `presence:update`, `chat:message`, `chat:ack`, `user:move`, and
+`error`. `presence:update` and `user:move` are bidirectional — each is both
+received from and sent back to clients. Realtime carries no agent events at
+all — agents are strictly HTTP
 request/response, handled entirely by the agent-bridge flow described above;
 the gateway never emits or listens for anything agent-related.
 
