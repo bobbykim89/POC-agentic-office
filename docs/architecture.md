@@ -137,13 +137,18 @@ tokens.
 ## Realtime
 
 The gateway is Socket.IO. Inbound, the backend handles `presence:join`,
-`presence:update`, `chat:send`, and `user:move`. Outbound, it emits
-`presence:update`, `chat:ack`, `chat:message`, `agent:result`, and `error`.
-Durable state — chat history, world state, presence — is written to
-Postgres, not held only in socket memory, so it survives a reconnect or a
-server restart. A client that disconnects and reconnects gets its state back
-from the database rather than from whatever the gateway process happened to
-be holding in memory. See
+`presence:update`, `chat:send`, and `user:move`. Outbound, it emits exactly
+four events: `presence:update`, `chat:ack`, `chat:message`, and `error`.
+Realtime carries no agent events at all — agents are strictly HTTP
+request/response, handled entirely by the agent-bridge flow described above;
+the gateway never emits or listens for anything agent-related.
+
+Presence, socket-to-user mappings, room membership, and player positions are
+held in memory in `PresenceService`'s plain JS `Map`s, not in Postgres — there
+is no repository and no database call backing any of it, so a server restart
+loses all of it. Chat is different: messages sent through `chat:send` are
+persisted to Postgres, so chat history survives a reconnect or a restart even
+though presence does not. See
 [Realtime / WebSocket](backend-spec/05-realtime-websocket.md) for the full
 event catalog.
 
@@ -154,41 +159,48 @@ the client nor the ai-service has a database connection of its own. Ten
 tables are live:
 
 **Identity & auth**
-- `users` — account records and credentials
-- `refresh_tokens` — issued refresh tokens for the JWT auth flow
+- `users` — account records, credentials, and the refresh token hash used to
+  reissue access tokens (there is no separate refresh-tokens table)
+- `external_accounts` — linked external provider accounts (e.g. Microsoft) per user
+- `oauth_states` — short-lived state values for the OAuth handshake
 
 **World state**
 - `rooms` — the set of rooms in the office map
-- `room_occupants` — which users are currently in which room
 
 **Chat**
-- `chat_messages` — persisted chat history
-- `chat_rooms` — chat channels/threads
-- `chat_room_members` — membership of users in chat rooms
+- `conversations` — a chat conversation, optionally tied to a room
+- `conversation_participants` — membership of users in a conversation
+- `conversation_reads` — each user's last-read position in a conversation
+- `messages` — persisted chat messages
 
 **Agents & ops**
-- `agent_bridge_logs` — a log row per agent request made through the bridge
+- `logs` — a log row per event, including agent-bridge requests made through
+  the agent flow above
 - `assistant_notifications` — messages queued for the avatar assistant to surface
-- `linkedin_posts` — generated LinkedIn post output saved for the user
 
-These ten map directly onto the responsibility split above: identity and
-world state back the backend's own session and presence logic, chat backs
-the realtime gateway, and the agents-and-ops group backs the agent-bridge
-flow and the avatar assistant. Nothing here persists per-frame movement or
-transient socket traffic — that stays in memory for the lifetime of the
-connection and is not written to a table. See
+These ten map directly onto the responsibility split above: identity backs
+auth, world state backs the room model, chat backs the realtime gateway's
+persisted history, and the agents-and-ops group backs the agent-bridge flow
+and the avatar assistant. Presence, socket state, and per-frame movement are
+not in this list — as the realtime section above describes, those stay in an
+in-memory `Map` and are never written to a table. See
 [Persistence](backend-spec/07-persistence.md) for column-level detail.
 
 ## Avatar assistant
 
-The avatar assistant is the one component in the system that acts without an
-inbound request. `proactive-515.detector.ts` reads backend state on its own
-schedule and, when conditions are met, writes a row through
-`assistant-notifications.repository.ts`. The client has no push channel for
-this — it polls `GET /avatar-assistant/message` to pick up anything the
+The avatar assistant is the one component in the system that acts without a
+client-initiated agent call. `Proactive515Detector.detect` reads backend
+state and, when conditions are met, writes a row through
+`assistant-notifications.repository.ts`. There is no separate mechanism that
+triggers this on its own: `AvatarAssistantService` invokes `detect`
+synchronously, inline, from inside the handler for
+`GET /avatar-assistant/message` — the detection logic only ever runs because,
+and exactly when, the client makes that request. The client has no push
+channel for this — it polls that same endpoint to pick up anything the
 detector has written. Every other capability described above is triggered by
-something the user did; this is the one exception, and it stays scoped to
-that single detector and that single polling endpoint.
+something the user did directly; this is the closest thing to an exception,
+and it stays scoped to that single detector and that single polling
+endpoint.
 
 ## Read next
 
