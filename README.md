@@ -7,26 +7,27 @@ A proof-of-concept: a gamified office where productivity tools are AI agents.
 You walk around an office as a sprite, and the productivity tools you'd
 normally open in a browser tab are instead AI agents you physically approach
 at a desk or a room. The stack is three services plus a database: a Vue 3 +
-Phaser client (the office you walk around in), a NestJS backend (auth, chat,
-world state, and the only service that talks to the outside world), and a
-FastAPI ai-service (the AI agents themselves), backed by Postgres.
+Phaser client (the office you walk around in) that never calls FastAPI
+directly, a NestJS backend (auth, chat, world state, and orchestration), and
+a FastAPI ai-service (the AI agents themselves), backed by Postgres.
 
 <!-- Screenshot/GIF slot: office walkthrough. Drop an image here when captured. -->
 
 ## The office
 
-| Where | Agent | What it does |
+| Where | Opens | What it does |
 |---|---|---|
 | Newsstand | AI news | Fetches a recent AI story and summarizes it in plain language |
 | Main computers (top) | LinkedIn writer | Turns a short input into a LinkedIn-style post |
 | Main computers (bottom) | 515 drafter | Drafts and revises your weekly 515, sends it via Outlook |
 | Video room | Sprite studio | Generates your character sheet from a photo or a description |
+| Meeting room table | Chat room | 1:1 and group chat with whoever else is in the office |
 
-Two features aren't tied to a zone. Realtime chat (1:1 and group, with
-presence and movement) runs across the whole office over a Socket.IO
-connection. The mini-me avatar assistant is a backend detector that surfaces
-a reminder when your Friday 515 is missing, rather than something you have to
-walk up to. The rest of the map is flavor.
+Two features are ambient rather than zone-gated. Presence and movement —
+other players' positions — stream over the realtime gateway no matter where
+you are. The mini-me avatar assistant is a backend detector that surfaces a
+reminder when your Friday 515 is missing; the client polls for it rather than
+you having to walk up to anything. The rest of the map is flavor.
 
 ## Architecture at a glance
 
