@@ -60,21 +60,37 @@ Controller → `AgentBridgeService` → `FastapiClientService` → FastAPI, awai
 Inbound (`@SubscribeMessage` handlers in `realtime.gateway.ts`) — document these four:
 - `presence:join`, `presence:update`, `chat:send`, `user:move`
 
-Outbound (actually emitted) — document these:
-- `presence:update`, `chat:ack`, `chat:message`, `agent:result`, `error`
+Outbound (actually emitted by live code) — document these four:
+- `presence:update` (`realtime.gateway.ts:89,124`), `chat:ack` (`:150`), `chat:message` (`:145`), `error` (`:222`)
 
-Declared but unwired — **do not document**: `room:join`, `room:leave`, `chat:typing`, `agent:request`, `room:state`, `user:position`, `agent:pending`, `agent:error`.
+Declared but unwired — **do not document**: `room:join`, `room:leave`, `chat:typing`, `agent:request`, `room:state`, `user:position`, `agent:pending`, `agent:error`, `agent:result`.
+
+**CORRECTION (2026-07-15, adjudicated by the human):** an earlier version of this plan listed `agent:result` as wired. It is not. `emitAgentResultToUsers` exists on both the gateway (`realtime.gateway.ts:185`) and the emitter service (`realtime-emitter.service.ts:39`), but its only callers are in `AgentJobsService` (`agent-jobs.service.ts:82,107`), which is never registered as a provider. The whole path is unreachable.
+
+**Consequence — state this in the doc:** realtime carries no agent events at all. Agents are strictly HTTP request/response. Realtime is only presence, chat, and movement.
 
 ### Persistence
-**SPEC CORRECTION.** The spec said "14 tables". `apps/backend/src/database/schema/` holds 15 files, of which 3 are not tables (`enums.schema.ts`, `index.ts`, `relations.ts`) → **12 tables defined**. Two are dead and must not be documented:
-- `agent_jobs` — touched only by the dead service chain
-- `coordinates` — referenced nowhere outside the schema directory
+**SPEC CORRECTION.** The spec said "14 tables". The real count, taken from `export const … = pgTable` declarations (NOT from filenames — `conversations.schema.ts` declares two tables), is **13 tables defined**.
 
-**Document these 10 live tables, grouped:**
+**CORRECTION (2026-07-15):** an earlier version of this plan said 12 tables and listed `presence` as live while omitting `conversation_participants`. Both were wrong. The error came from counting filenames and from grepping for bare names, which matches `PresenceService` and `RealtimePresenceDto` as if they were the `presence` table.
+
+**Three tables are dead — do not document:**
+- `agent_jobs` — touched only by the dead `AgentJobsService` chain
+- `coordinates` — referenced nowhere outside `database/schema/`
+- `presence` — **nothing imports this table.** Presence lives in in-memory `Map`s in `PresenceService` (`apps/backend/src/modules/realtime/services/presence.service.ts:7-11`)
+
+**Document these 10 live tables, grouped exactly so:**
 - Identity & auth: `users`, `external_accounts`, `oauth_states`
-- World state: `rooms`, `presence`
-- Chat: `conversations`, `messages`, `conversation_reads`
+- World state: `rooms`
+- Chat: `conversations`, `conversation_participants`, `conversation_reads`, `messages`
 - Agents & ops: `logs`, `assistant_notifications`
+
+### Presence is in-memory (adjudicated by the human)
+`PresenceService` holds presence, socket mappings, room membership, and player positions in plain `Map`s. No repository, no `db.` call, no schema import — a restart loses all of it.
+
+State this factually and stop there: presence and positions are held in memory in `PresenceService` and are lost on restart; chat history and messages are persisted to Postgres.
+
+Do **not** note that this diverges from the rule in `AGENTS.md` / `docs/backend-spec/05-realtime-websocket.md` ("store durable state in Postgres"). The doc describes what runs; it does not critique other docs. Do not restate that rule as though the code followed it.
 
 ### Response envelope
 `apps/backend/src/common/interfaces/api-response.interface.ts`:
@@ -439,11 +455,13 @@ Do not mention AgentJobsService, agent_jobs, or an async path. See Verified fact
 
 **6. Auth** — Passport JWT, access + refresh from `token.service.ts`, TTL defaults (`15m` access), and that secrets fall back to hardcoded defaults so the stack boots unconfigured. Link `docs/backend-spec/02-auth.md` and `docs/frontend-auth/`.
 
-**7. Realtime** — inbound handlers: `presence:join`, `presence:update`, `chat:send`, `user:move`. Outbound: `presence:update`, `chat:ack`, `chat:message`, `agent:result`, `error`. Plus the rule that durable state goes to Postgres, not socket memory. Do not document the 8 unwired names. Link `docs/backend-spec/05-realtime-websocket.md`.
+**7. Realtime** — inbound handlers: `presence:join`, `presence:update`, `chat:send`, `user:move`. Outbound: `presence:update`, `chat:ack`, `chat:message`, `error`. State that realtime carries no agent events — agents are strictly HTTP request/response. State factually that presence and positions are in-memory and lost on restart, while chat history is persisted. Do not document the 9 unwired names. Link `docs/backend-spec/05-realtime-websocket.md`.
 
-**8. Persistence** — Drizzle + Postgres 16. The 10 live tables, grouped exactly as in Verified facts (Identity & auth / World state / Chat / Agents & ops), one line each on what it holds. Do not list `agent_jobs` or `coordinates`. Link `docs/backend-spec/07-persistence.md`.
+**8. Persistence** — Drizzle + Postgres 16. The 10 live tables, grouped exactly as in Verified facts (Identity & auth / World state / Chat / Agents & ops), one line each on what it holds. Do not list `agent_jobs`, `coordinates`, or `presence`. Every table name must be copied from the Verified facts list — do not source table names from `docs/backend-spec/07-persistence.md` or any other spec doc. Link `docs/backend-spec/07-persistence.md`.
 
-**9. Avatar assistant** — its own short section. The one component that acts without a request: `proactive-515.detector.ts` reads state and writes rows via `assistant-notifications.repository.ts`; the client polls `GET /avatar-assistant/message`. Describe what it is. Do not pitch it as an extension point.
+**9. Avatar assistant** — its own short section. The one component that acts without a client-initiated agent call: `proactive-515.detector.ts` reads state and writes rows via `assistant-notifications.repository.ts`; the client polls `GET /avatar-assistant/message`.
+
+**Accuracy constraint:** there is no scheduler. No `@Cron`, no `@Interval`, no `ScheduleModule` exists in the backend. `Proactive515Detector.detect` is invoked synchronously from `AvatarAssistantService` inside the `GET /avatar-assistant/message` request. Do not write that it runs "on its own schedule", "periodically", "in the background", or on any timer. Describe what it is. Do not pitch it as an extension point.
 
 **10. Read next** — copy verbatim:
 ```markdown
