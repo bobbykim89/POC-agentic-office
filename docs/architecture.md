@@ -35,8 +35,8 @@ flowchart TB
 ```
 
 Both the backend and the ai-service carry their own Microsoft Graph client
-and their own Graph credentials — separate OAuth apps, separate redirect
-URIs, separate token storage. For the weekly 515 specifically, the client
+and their own Graph credentials — separate redirect URIs, separate token
+storage. For the weekly 515 specifically, the client
 only exercises the backend's side: `history`, `send`, and `save-draft` all
 go through the backend's `MicrosoftGraphMailService`, which performs all of
 the 515's Graph mail activity — reading the user's sent-mail history,
