@@ -37,13 +37,28 @@ These were verified by reading the code on 2026-07-15. They **correct the spec**
 - backend `3000` (`apps/backend/src/main.ts:14`, `process.env.PORT ?? 3000`)
 - ai-service `8001` (`apps/ai-service/package.json` dev script)
 
-### Agent surfaces (only these four; ~14 other zones are flavor)
-| Zone id | Where | Agent | Endpoint |
+### Functional zones — there are exactly FIVE
+
+**CORRECTION (2026-07-15, adjudicated by the human):** an earlier version listed four agent zones and called realtime chat a "non-zone feature". Wrong. Chat is opened from the `meeting-room-table` zone exactly like the agent terminals (`createOfficeGame.ts:826-838` → `onOpenChatRoom()` → `HomeView.vue:62-69`). The error came from reading that zone's flavor text ("Maybe I should join a meeting here.") instead of its handler.
+
+The definitive list is every `zone.id === "…"` branch with a real handler in `apps/client/src/game/createOfficeGame.ts` (lines 758, 778, 794, 810, 826). All other zones are dialogue-only flavor.
+
+| Zone id | Where | Opens | Endpoint |
 |---|---|---|---|
 | `newstand-panel` | Newsstand | AI news | `GET /agents/ai-news` |
 | `main-computers-top` | Main computers (top) | LinkedIn writer | `POST /agents/linkedin-post` |
 | `main-computers-bottom` | Main computers (bottom) | 515 drafter | `POST /agents/weekly-report/*` |
 | `video-room` | Video room | Sprite studio | `POST /agents/sprite-sheet` |
+| `meeting-room-table` | Meeting room table | Chat room | realtime gateway (not an agent) |
+
+**The middle column is `Opens`, not `Agent`** — chat is not an AI agent and the column must not imply it is.
+
+Genuinely ambient (not zone-gated) — describe separately:
+- **Presence and movement** — other players' positions stream over the realtime gateway.
+- **Avatar assistant (mini-me)** — a backend detector (`proactive-515.detector.ts`) surfaced by the client polling `GET /avatar-assistant/message` (`HomeView.vue:132`).
+
+### The ai-service makes its own outbound calls
+**Do not write that the backend is the only service that reaches the outside world.** False. `apps/ai-service` calls OpenAI directly (`linkedin_writer.py:43`, `ai_news_agent.py:113`, `sprite_sheet_generator.py:381`), Cloudinary (`sprite_sheet_generator.py:825`), and Microsoft Graph (`weekly_report_agent.py:128`). The true, narrower claim is: **the client never calls FastAPI directly.**
 
 ### The agent flow is SYNCHRONOUS
 Controller → `AgentBridgeService` → `FastapiClientService` → FastAPI, awaited inline.
@@ -273,15 +288,18 @@ Target 120–150 lines, sections in this exact order.
 **4. The office** — copy this table verbatim:
 
 ```markdown
-| Where | Agent | What it does |
+| Where | Opens | What it does |
 |---|---|---|
 | Newsstand | AI news | Fetches a recent AI story and summarizes it in plain language |
 | Main computers (top) | LinkedIn writer | Turns a short input into a LinkedIn-style post |
 | Main computers (bottom) | 515 drafter | Drafts and revises your weekly 515, sends it via Outlook |
 | Video room | Sprite studio | Generates your character sheet from a photo or a description |
+| Meeting room table | Chat room | 1:1 and group chat with whoever else is in the office |
 ```
 
-Then a short paragraph on the two non-zone features: realtime chat (1:1 and group, with presence and movement), and the mini-me avatar assistant — a backend detector that surfaces a reminder when your Friday 515 is missing. Do not list every interaction zone; the rest are flavor.
+Five rows — these are every zone with a real handler. The column is **`Opens`**, not `Agent`: chat is not an AI agent, and four of the five are.
+
+Then a short paragraph on the two genuinely ambient features, which are not zone-gated: presence and movement (other players stream over the realtime gateway), and the mini-me avatar assistant — a backend detector that surfaces a reminder when your Friday 515 is missing, which the client polls for. Do not list the remaining interaction zones; they are dialogue-only flavor.
 
 **5. Architecture at a glance** — copy this diagram verbatim:
 
