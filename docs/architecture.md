@@ -29,22 +29,29 @@ flowchart TB
     B -->|"HTTP only"| A
     B --- DB
     B -->|"OAuth + mail"| MS
+    A -->|"account auth"| MS
     A -->|"LLM + images"| OAI
     A -->|"sprite upload"| CL
 ```
 
-The backend uses Graph for OAuth account linking and mail. For the weekly
-515 specifically, it performs all Graph mail activity: reading the user's
-sent-mail history, sending the report, and saving drafts. The ai-service's
-contribution to the 515 is the drafted and revised text only — it never
-talks to Graph itself.
+Both the backend and the ai-service carry their own Microsoft Graph client
+and their own Graph credentials — separate OAuth apps, separate redirect
+URIs, separate token storage. For the weekly 515 specifically, the client
+only exercises the backend's side: `history`, `send`, and `save-draft` all
+go through the backend's `MicrosoftGraphMailService`, which performs all of
+the 515's Graph mail activity — reading the user's sent-mail history,
+sending the report, and saving drafts. The ai-service's contribution to the
+515 is the drafted and revised text only, produced via OpenAI through the
+`draft` and `revise` routes. The ai-service's own Graph auth-start,
+auth-callback, and accounts routes are registered and reachable from the
+backend, but the current client does not call them.
 
 The client never talks to FastAPI, OpenAI, Cloudinary, or Microsoft Graph
 directly — every client request reaches them only after passing through the
 NestJS backend first. The backend is the only workspace with a database
 connection, but it is not the only workspace holding external credentials:
-the ai-service reaches OpenAI and Cloudinary itself, using credentials of its
-own.
+the ai-service reaches OpenAI, Cloudinary, and Microsoft Graph itself, using
+credentials of its own.
 
 ## Responsibility split
 
@@ -62,8 +69,7 @@ ai-service implements the same HTTP contract, the backend does not care what
 model, prompt, or provider sits behind it. FastAPI keeps its own on-disk
 JSON state for its own implementation, but NestJS treats that as an
 implementation detail and never relies on it as a system of record — Postgres
-is the backend's only datastore, and the only durable store for the system
-as a whole. See
+is the backend's only datastore. See
 [Backend architecture](backend-spec/01-architecture.md) for the full detail
 on this split.
 
