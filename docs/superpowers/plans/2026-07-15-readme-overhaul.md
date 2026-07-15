@@ -60,8 +60,18 @@ Controller → `AgentBridgeService` → `FastapiClientService` → FastAPI, awai
 Inbound (`@SubscribeMessage` handlers in `realtime.gateway.ts`) — document these four:
 - `presence:join`, `presence:update`, `chat:send`, `user:move`
 
-Outbound (actually emitted by live code) — document these four:
-- `presence:update` (`realtime.gateway.ts:89,124`), `chat:ack` (`:150`), `chat:message` (`:145`), `error` (`:222`)
+Outbound (actually emitted by live code) — document these **five**:
+- `presence:update`, `chat:message`, `chat:ack`, `user:move`, `error`
+
+**CORRECTION (2026-07-15, second pass):** an earlier version listed only four outbound and omitted `user:move`. Wrong — `user:move` is both inbound and outbound.
+
+There are two outbound mechanisms; a complete list requires reading both:
+1. **Broadcast** via `RealtimeEmitterService` (`emitToUsers` / `emitToConversation` / `emitToRoom`, which take the event name as an argument): `presence:update` (`realtime-emitter.service.ts:23`), `chat:message` (`:29`), `user:move` (`:36`).
+2. **Ack returned to the sender** via the gateway's `ok(event, data, ackEvent = event)` helper (`realtime.gateway.ts:208`), whose return value Nest sends back: `presence:update` (`:89` from the `presence:join` handler, `:124` from the `presence:update` handler), `chat:ack` (`:150`), `user:move` (`:182`).
+
+Note `chat:send` returns `ok(CHAT_MESSAGE, {...}, CHAT_ACK)` — the payload's inner envelope is labeled `chat:message` but it is delivered to the sender as `chat:ack`.
+
+Plus `error` (`realtime-emitter.service.ts:50`, `realtime.gateway.ts:222`).
 
 Declared but unwired — **do not document**: `room:join`, `room:leave`, `chat:typing`, `agent:request`, `room:state`, `user:position`, `agent:pending`, `agent:error`, `agent:result`.
 
@@ -455,7 +465,7 @@ Do not mention AgentJobsService, agent_jobs, or an async path. See Verified fact
 
 **6. Auth** — Passport JWT, access + refresh from `token.service.ts`, TTL defaults (`15m` access), and that secrets fall back to hardcoded defaults so the stack boots unconfigured. Link `docs/backend-spec/02-auth.md` and `docs/frontend-auth/`.
 
-**7. Realtime** — inbound handlers: `presence:join`, `presence:update`, `chat:send`, `user:move`. Outbound: `presence:update`, `chat:ack`, `chat:message`, `error`. State that realtime carries no agent events — agents are strictly HTTP request/response. State factually that presence and positions are in-memory and lost on restart, while chat history is persisted. Do not document the 9 unwired names. Link `docs/backend-spec/05-realtime-websocket.md`.
+**7. Realtime** — inbound handlers: `presence:join`, `presence:update`, `chat:send`, `user:move`. Outbound (five): `presence:update`, `chat:message`, `chat:ack`, `user:move`, `error`. Note that `presence:update` and `user:move` travel in both directions. State that realtime carries no agent events — agents are strictly HTTP request/response. State factually that presence and positions are in-memory and lost on restart, while chat history is persisted. Do not document the 9 unwired names. Link `docs/backend-spec/05-realtime-websocket.md`.
 
 **8. Persistence** — Drizzle + Postgres 16. The 10 live tables, grouped exactly as in Verified facts (Identity & auth / World state / Chat / Agents & ops), one line each on what it holds. Do not list `agent_jobs`, `coordinates`, or `presence`. Every table name must be copied from the Verified facts list — do not source table names from `docs/backend-spec/07-persistence.md` or any other spec doc. Link `docs/backend-spec/07-persistence.md`.
 
