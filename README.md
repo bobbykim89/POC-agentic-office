@@ -8,7 +8,7 @@ You walk around an office as a sprite, and the productivity tools you'd
 normally open in a browser tab are instead AI agents you physically approach
 at a desk or a room. The stack is three services plus a database: a Vue 3 +
 Phaser client (the office you walk around in) that never calls FastAPI
-directly, a NestJS backend (auth, chat, world state, and orchestration), and
+directly, a NestJS backend (auth, chat, presence, and orchestration), and
 a FastAPI ai-service (the AI agents themselves), backed by Postgres.
 
 <!-- Screenshot/GIF slot: office walkthrough. Drop an image here when captured. -->
@@ -26,8 +26,9 @@ a FastAPI ai-service (the AI agents themselves), backed by Postgres.
 Two features are ambient rather than zone-gated. Presence and movement —
 other players' positions — stream over the realtime gateway no matter where
 you are. The mini-me avatar assistant is a backend detector that surfaces a
-reminder when your Friday 515 is missing; the client polls for it rather than
-you having to walk up to anything. The rest of the map is flavor.
+reminder when your Friday 515 is missing; the client fetches it once when the
+office loads rather than you having to walk up to anything. The rest of the
+map is flavor.
 
 ## Architecture at a glance
 
@@ -43,10 +44,11 @@ flowchart LR
     B --- DB
 ```
 
-NestJS owns auth, chat, world state, persistence, and orchestration. FastAPI
-is an HTTP-only AI execution layer that is stateless from the backend's
-perspective and holds no database of its own. The client never calls FastAPI
-directly — every agent request goes through the backend.
+NestJS owns auth, chat, presence, persistence, and orchestration. FastAPI is
+an HTTP-only AI execution layer that keeps its own on-disk JSON state and
+holds no database of its own; Postgres is the backend's only datastore. The
+client never calls FastAPI directly — every agent request goes through the
+backend.
 
 See [docs/architecture.md](docs/architecture.md) for the full picture.
 
@@ -73,7 +75,7 @@ docker compose ps                 # confirm postgres is "healthy" before migrati
 pnpm --filter @agentic-office/backend db:migrate
 
 cd apps/ai-service
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cd ../..
@@ -93,11 +95,15 @@ processes).
 
 **What works without credentials:** `pnpm dev` alone gets you a walkable
 office with working auth and chat. Each agent additionally needs its own
-credentials in `apps/ai-service/.env`:
+credentials, split across two files:
 
-- `OPENAI_API_KEY` — LinkedIn writer, AI news, sprite studio
-- Cloudinary (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) — hosted sprite assets
-- Microsoft Graph (`MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID`, `MICROSOFT_REDIRECT_URI`) — 515 drafter
+`apps/backend/.env`:
+- Microsoft Graph (`MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_TENANT_ID`, `MICROSOFT_REDIRECT_URI`) — 515 drafter reads and sends through Outlook
+- `INTEGRATIONS_ENCRYPTION_KEY` — encrypts the stored Microsoft tokens
+
+`apps/ai-service/.env`:
+- `OPENAI_API_KEY` — LinkedIn writer, AI news, sprite studio, and 515 drafting/revising text
+- Cloudinary (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) — required for the sprite studio; the backend hard-fails without it
 
 ## Ports
 
